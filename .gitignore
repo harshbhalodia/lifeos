@@ -48,6 +48,17 @@ coverage.xml
 *.cover
 *.py.cover
 .hypothesis/
+
+# Node / Vite (apps/web)
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+*.tsbuildinfo
 .pytest_cache/
 cover/
 
@@ -187,6 +198,13 @@ cython_debug/
 #   and can be added to the global gitignore or merged into this file.  For a more nuclear
 #   option (not recommended) you can uncomment the following to ignore the entire idea folder.
 # .idea/
+
+# LifeOS backend
+backend/data/
+*.db
+*.db-journal
+config/config.yaml
+
 
 # Abstra
 #   Abstra is an AI-powered process automation framework.
