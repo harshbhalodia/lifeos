@@ -13,9 +13,10 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.models import User, WealthAccount, WealthBudget, WealthCategory, WealthEntry, WealthForecastAssumption
+from app.models import User, WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption
 from app.services import ai_provider
 from app.services.analytics import (
+    compute_asset_performance,
     compute_budget_statuses,
     compute_cashflow_series,
     compute_liquidity,
@@ -50,6 +51,14 @@ AGENTS: dict[str, AgentSpec] = {
         reads=["wealth_accounts", "wealth_entries", "wealth_categories"],
         writes=["wealth_insights"],
     ),
+    "wealth.asset_advisor": AgentSpec(
+        id="wealth.asset_advisor",
+        name="Asset Advisor",
+        version="0.1.0",
+        description="Reviews held assets' purchase vs current value and suggests whether to hold, sell, or buy more.",
+        reads=["wealth_assets"],
+        writes=["wealth_insights"],
+    ),
 }
 
 SYSTEM_PROMPT = """You are a personal finance assistant inside LifeOS.
@@ -63,7 +72,7 @@ def _gather_budget_facts(db: Session, user: User) -> dict:
     entries = db.query(WealthEntry).filter(WealthEntry.user_id == user.id).all()
     budgets = db.query(WealthBudget).filter(WealthBudget.user_id == user.id).all()
     categories = db.query(WealthCategory).filter(WealthCategory.user_id == user.id).all()
-    statuses = compute_budget_statuses(budgets, entries, categories)
+    statuses = compute_budget_statuses(budgets, entries, categories, user.fiscal_year_start_month)
     return {"month": date.today().isoformat()[:7], "budgets": statuses}
 
 
@@ -71,12 +80,18 @@ def _gather_financial_insight_facts(db: Session, user: User) -> dict:
     accounts = db.query(WealthAccount).filter(WealthAccount.user_id == user.id).all()
     entries = db.query(WealthEntry).filter(WealthEntry.user_id == user.id).all()
     categories = db.query(WealthCategory).filter(WealthCategory.user_id == user.id).all()
+    groups = db.query(WealthCategoryGroup).filter(WealthCategoryGroup.user_id == user.id).all()
 
     return {
         "net_worth": compute_net_worth(accounts),
-        "liquidity": compute_liquidity(accounts, entries, categories),
+        "liquidity": compute_liquidity(accounts, entries, categories, groups),
         "cashflow_last_3_months": compute_cashflow_series(entries, months_back=3),
     }
+
+
+def _gather_asset_facts(db: Session, user: User) -> dict:
+    assets = db.query(WealthAsset).filter(WealthAsset.user_id == user.id).all()
+    return {"assets": compute_asset_performance(assets)}
 
 
 def gather_facts(agent_id: str, db: Session, user: User) -> dict:
@@ -84,6 +99,8 @@ def gather_facts(agent_id: str, db: Session, user: User) -> dict:
         return _gather_budget_facts(db, user)
     if agent_id == "wealth.financial_insight_agent":
         return _gather_financial_insight_facts(db, user)
+    if agent_id == "wealth.asset_advisor":
+        return _gather_asset_facts(db, user)
     raise ValueError(f"Unknown agent: {agent_id}")
 
 

@@ -36,6 +36,7 @@ export function WealthOverviewPage() {
         <StatCard label="Net worth" value={formatCurrency(netWorth.total)} />
         <StatCard label="Liquid" value={formatCurrency(netWorth.liquid)} />
         <StatCard label="Investments" value={formatCurrency(netWorth.investments)} />
+        <StatCard label="Personal assets" value={formatCurrency(netWorth.personal_assets)} sub="Home, car, etc." />
         <StatCard
           label="Runway"
           value={liquidity.months_of_runway !== null ? `${liquidity.months_of_runway} mo` : '—'}
@@ -78,7 +79,7 @@ export function WealthOverviewPage() {
               {attention.map((s) => (
                 <li key={s.budget_id} style={{ marginBottom: 6 }}>
                   <strong>{s.category_name}</strong> — {s.percent}% of budget (
-                  {formatCurrency(s.spent)} / {formatCurrency(s.monthly_amount)})
+                  {formatCurrency(s.spent)} / {formatCurrency(s.amount)})
                 </li>
               ))}
             </ul>
@@ -94,6 +95,7 @@ export function WealthOverviewPage() {
               {goals.slice(0, 5).map((g) => (
                 <li key={g.id} style={{ marginBottom: 6 }}>
                   <strong>{g.name}</strong> — {formatCurrency(g.current_amount)} / {formatCurrency(g.target_amount)}
+                  {g.achieved_at && <span className="badge badge-success" style={{ marginLeft: 6 }}>Achieved</span>}
                 </li>
               ))}
             </ul>

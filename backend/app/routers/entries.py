@@ -1,12 +1,45 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import User, WealthEntry
+from app.models import User, WealthEntry, WealthGoal
 from app.schemas import EntryIn, EntryOut
 
 router = APIRouter(prefix="/wealth/entries", tags=["wealth:entries"])
+
+ENTRY_FIELDS = (
+    "type",
+    "amount",
+    "entry_date",
+    "payee",
+    "category_id",
+    "account_id",
+    "goal_id",
+    "is_recurring",
+    "recurrence_interval",
+    "notes",
+    "import_batch_id",
+)
+
+
+def _sync_goal_progress(db: Session, goal_id: str) -> None:
+    """Recomputes a goal's current_amount from its linked entries and auto-marks it achieved
+    the first time it reaches its target. Manual current_amount edits are only used for goals
+    with no linked entries at all."""
+    goal = db.get(WealthGoal, goal_id)
+    if not goal:
+        return
+    linked_total = db.query(func.sum(WealthEntry.amount)).filter(WealthEntry.goal_id == goal_id).scalar()
+    if linked_total is not None:
+        goal.current_amount = round(linked_total, 2)
+    if goal.achieved_at is None and goal.target_amount > 0 and goal.current_amount >= goal.target_amount:
+        goal.achieved_at = date.today()
+    db.add(goal)
+    db.commit()
 
 
 @router.get("", response_model=list[EntryOut])
@@ -25,26 +58,23 @@ def upsert_entry(payload: EntryIn, user: User = Depends(get_current_user), db: S
     if entry and entry.user_id != user.id:
         raise HTTPException(status_code=404, detail="Entry not found")
 
+    previous_goal_id = entry.goal_id if entry else None
+
     if not entry:
         entry = WealthEntry(user_id=user.id)
         db.add(entry)
 
-    for field in (
-        "type",
-        "amount",
-        "entry_date",
-        "payee",
-        "category_id",
-        "account_id",
-        "is_recurring",
-        "recurrence_interval",
-        "notes",
-        "import_batch_id",
-    ):
+    for field in ENTRY_FIELDS:
         setattr(entry, field, getattr(payload, field))
 
     db.commit()
     db.refresh(entry)
+
+    if previous_goal_id and previous_goal_id != entry.goal_id:
+        _sync_goal_progress(db, previous_goal_id)
+    if entry.goal_id:
+        _sync_goal_progress(db, entry.goal_id)
+
     return entry
 
 
@@ -53,18 +83,7 @@ def bulk_insert_entries(payload: list[EntryIn], user: User = Depends(get_current
     created: list[WealthEntry] = []
     for item in payload:
         entry = WealthEntry(user_id=user.id)
-        for field in (
-            "type",
-            "amount",
-            "entry_date",
-            "payee",
-            "category_id",
-            "account_id",
-            "is_recurring",
-            "recurrence_interval",
-            "notes",
-            "import_batch_id",
-        ):
+        for field in ENTRY_FIELDS:
             setattr(entry, field, getattr(item, field))
         db.add(entry)
         created.append(entry)
@@ -72,6 +91,10 @@ def bulk_insert_entries(payload: list[EntryIn], user: User = Depends(get_current
     db.commit()
     for entry in created:
         db.refresh(entry)
+
+    for goal_id in {e.goal_id for e in created if e.goal_id}:
+        _sync_goal_progress(db, goal_id)
+
     return created
 
 
@@ -80,5 +103,8 @@ def delete_entry(entry_id: str, user: User = Depends(get_current_user), db: Sess
     entry = db.get(WealthEntry, entry_id)
     if not entry or entry.user_id != user.id:
         raise HTTPException(status_code=404, detail="Entry not found")
+    goal_id = entry.goal_id
     db.delete(entry)
     db.commit()
+    if goal_id:
+        _sync_goal_progress(db, goal_id)

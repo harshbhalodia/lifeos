@@ -4,7 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useWealthData } from '../hooks'
 import * as api from '../api'
 import { Modal } from '../components/Modal'
-import type { WealthBudget } from '../types'
+import type { BudgetPeriod, WealthBudget } from '../types'
 import { formatCurrency } from '@/lib/format'
 
 export function BudgetsPage() {
@@ -26,7 +26,10 @@ export function BudgetsPage() {
       <div className="row-between">
         <div>
           <h1>Budgets</h1>
-          <p className="muted">Monthly limits per category with warning and critical thresholds.</p>
+          <p className="muted">
+            Monthly limits, or yearly limits for once-a-year costs like car insurance or mortgage escrow, per
+            category — with warning and critical thresholds.
+          </p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={expenseCategories.length === 0}>
           <Plus size={14} /> Add budget
@@ -50,6 +53,7 @@ export function BudgetsPage() {
                   {s.percent}%
                 </span>
               </div>
+              <p className="stat-sub" style={{ marginBottom: 4 }}>{s.period === 'yearly' ? 'Yearly (financial year)' : 'Monthly'}</p>
               <div className="progress-track" style={{ marginBottom: 8 }}>
                 <div
                   className={`progress-fill ${s.status === 'warning' ? 'warning' : s.status === 'critical' ? 'danger' : ''}`}
@@ -57,9 +61,9 @@ export function BudgetsPage() {
                 />
               </div>
               <p className="muted">
-                {formatCurrency(s.spent)} of {formatCurrency(s.monthly_amount)} spent
+                {formatCurrency(s.spent)} of {formatCurrency(s.amount)} spent
               </p>
-              <p className="stat-sub">Projected month-end: {formatCurrency(s.projected_month_end)}</p>
+              <p className="stat-sub">Projected period-end: {formatCurrency(s.projected_period_end)}</p>
               <button
                 className="btn btn-ghost btn-sm"
                 style={{ marginTop: 8 }}
@@ -106,7 +110,8 @@ function BudgetForm({
   onSaved: () => Promise<void>
 }) {
   const [categoryId, setCategoryId] = useState(budget?.category_id ?? categories[0]?.id ?? '')
-  const [monthlyAmount, setMonthlyAmount] = useState(String(budget?.monthly_amount ?? ''))
+  const [period, setPeriod] = useState<BudgetPeriod>(budget?.period ?? 'monthly')
+  const [amount, setAmount] = useState(String(budget?.amount ?? ''))
   const [warningThreshold, setWarningThreshold] = useState(String(budget?.warning_threshold ?? 80))
   const [criticalThreshold, setCriticalThreshold] = useState(String(budget?.critical_threshold ?? 100))
   const [saving, setSaving] = useState(false)
@@ -118,7 +123,8 @@ function BudgetForm({
       await api.upsertBudget({
         id: budget?.id,
         category_id: categoryId,
-        monthly_amount: Number(monthlyAmount),
+        period,
+        amount: Number(amount),
         warning_threshold: Number(warningThreshold),
         critical_threshold: Number(criticalThreshold),
       })
@@ -142,10 +148,23 @@ function BudgetForm({
             ))}
           </select>
         </label>
-        <label className="span-2">
-          Monthly amount
-          <input type="number" step="0.01" min="0" value={monthlyAmount} onChange={(e) => setMonthlyAmount(e.target.value)} required />
+        <label>
+          Period
+          <select value={period} onChange={(e) => setPeriod(e.target.value as BudgetPeriod)}>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly (financial year)</option>
+          </select>
         </label>
+        <label>
+          {period === 'yearly' ? 'Yearly amount' : 'Monthly amount'}
+          <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+        </label>
+        {period === 'yearly' && (
+          <p className="muted span-2" style={{ marginTop: -4 }}>
+            Spend is tracked over your financial year (set in Settings), useful for once-a-year costs like car
+            insurance premiums or annual mortgage escrow top-ups.
+          </p>
+        )}
         <label>
           Warning at (%)
           <input type="number" min="0" max="200" value={warningThreshold} onChange={(e) => setWarningThreshold(e.target.value)} />

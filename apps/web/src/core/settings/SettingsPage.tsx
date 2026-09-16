@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/core/auth/AuthContext'
 import { apiClient } from '@/lib/apiClient'
+import { MONTH_LABELS } from '@/blueprints/wealth/types'
 
 interface AiStatus {
   enabled: boolean
@@ -11,9 +12,10 @@ interface AiStatus {
 }
 
 export function SettingsPage() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, updateFiscalYearStartMonth } = useAuth()
   const [backendUp, setBackendUp] = useState<boolean | null>(null)
   const [ai, setAi] = useState<AiStatus | null>(null)
+  const [savingFy, setSavingFy] = useState(false)
 
   useEffect(() => {
     apiClient
@@ -26,6 +28,15 @@ export function SettingsPage() {
       .then(setAi)
       .catch(() => setAi(null))
   }, [])
+
+  async function handleFiscalYearChange(month: number) {
+    setSavingFy(true)
+    try {
+      await updateFiscalYearStartMonth(month)
+    } finally {
+      setSavingFy(false)
+    }
+  }
 
   return (
     <div className="stack">
@@ -45,6 +56,28 @@ export function SettingsPage() {
         <button className="btn btn-ghost" onClick={signOut}>
           Sign out
         </button>
+      </div>
+
+      <div className="card" style={{ maxWidth: 480 }}>
+        <h3>Financial year</h3>
+        <p className="muted">
+          Yearly budgets (e.g. car insurance, mortgage escrow) track spend from this month through the same
+          month next year, instead of resetting every calendar month.
+        </p>
+        <label>
+          Financial year starts in
+          <select
+            value={user?.fiscal_year_start_month ?? 1}
+            onChange={(e) => void handleFiscalYearChange(Number(e.target.value))}
+            disabled={savingFy}
+          >
+            {MONTH_LABELS.map((label, i) => (
+              <option key={label} value={i + 1}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="card" style={{ maxWidth: 480 }}>

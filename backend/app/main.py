@@ -6,8 +6,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_auth_config, get_cors_origins
 from app.database import SessionLocal
 from app.models import User
-from app.routers import accounts, agents, ai, analytics, assumptions, auth, budgets, categories, entries, goals
+from app.routers import (
+    accounts,
+    agents,
+    ai,
+    analytics,
+    assets,
+    assumptions,
+    auth,
+    budgets,
+    categories,
+    category_groups,
+    entries,
+    goals,
+)
 from app.security import hash_password
+from app.services.defaults import seed_default_category_groups
 
 
 def _bootstrap_admin() -> None:
@@ -21,8 +35,11 @@ def _bootstrap_admin() -> None:
         password = cfg.get("initial_admin_password")
         if not email or not password:
             return
-        db.add(User(email=email, password_hash=hash_password(password)))
+        user = User(email=email, password_hash=hash_password(password))
+        db.add(user)
         db.commit()
+        db.refresh(user)
+        seed_default_category_groups(db, user.id)
     finally:
         db.close()
 
@@ -45,7 +62,9 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(accounts.router)
+app.include_router(assets.router)
 app.include_router(categories.router)
+app.include_router(category_groups.router)
 app.include_router(entries.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)

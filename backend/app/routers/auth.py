@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import User
-from app.schemas import LoginRequest, TokenResponse, UserOut
+from app.schemas import LoginRequest, TokenResponse, UserOut, UserSettingsIn
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -21,4 +21,12 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.put("/me/settings", response_model=UserOut)
+def update_settings(payload: UserSettingsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
+    user.fiscal_year_start_month = payload.fiscal_year_start_month
+    db.commit()
+    db.refresh(user)
     return user

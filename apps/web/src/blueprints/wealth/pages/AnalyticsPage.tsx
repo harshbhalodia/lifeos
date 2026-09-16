@@ -18,18 +18,10 @@ import {
 import { useWealthData } from '../hooks'
 import * as api from '../api'
 import { StatCard } from '../components/StatCard'
-import { CATEGORY_GROUP_LABELS } from '../types'
 import type { NetWorthProjectionPoint } from '../types'
 import { formatCurrency } from '@/lib/format'
 
-const GROUP_COLORS: Record<string, string> = {
-  fixed: '#2f6d4f',
-  variable: '#a15c07',
-  adhoc: '#b3261e',
-  investments: '#275475',
-  new_investments: '#6d4fa1',
-  income: '#1f4d38',
-}
+const FALLBACK_COLOR = '#6b6255'
 
 export function AnalyticsPage() {
   const { analytics, assumptions, loading, error, refresh } = useWealthData()
@@ -124,17 +116,17 @@ export function AnalyticsPage() {
                   <Pie
                     data={groupBreakdown}
                     dataKey="total"
-                    nameKey="group"
+                    nameKey="group_name"
                     innerRadius={50}
                     outerRadius={90}
                     paddingAngle={2}
                   >
                     {groupBreakdown.map((entry) => (
-                      <Cell key={entry.group} fill={GROUP_COLORS[entry.group]} />
+                      <Cell key={entry.group_id ?? 'uncategorized'} fill={entry.color ?? FALLBACK_COLOR} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(v) => formatCurrency(Number(v))} />
-                  <Legend formatter={(value: string) => CATEGORY_GROUP_LABELS[value as keyof typeof CATEGORY_GROUP_LABELS] ?? value} />
+                  <Legend />
                 </PieChart>
               </ResponsiveContainer>
             </div>

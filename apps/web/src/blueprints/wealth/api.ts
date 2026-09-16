@@ -6,8 +6,10 @@ import type {
   Insight,
   NetWorthProjectionPoint,
   WealthAccount,
+  WealthAsset,
   WealthBudget,
   WealthCategory,
+  WealthCategoryGroup,
   WealthEntry,
   WealthForecastAssumption,
   WealthGoal,
@@ -29,6 +31,46 @@ export async function deleteAccount(id: string): Promise<void> {
   return apiClient.delete(`/wealth/accounts/${id}`)
 }
 
+/* ---------------- assets ---------------- */
+
+export async function listAssets(): Promise<WealthAsset[]> {
+  return apiClient.get('/wealth/assets')
+}
+
+export async function upsertAsset(
+  asset: Partial<WealthAsset> & { name: string; asset_type: WealthAsset['asset_type']; purchase_value: number; current_value: number },
+): Promise<WealthAsset> {
+  return apiClient.put('/wealth/assets', asset)
+}
+
+export async function sellAsset(id: string, soldValue: number, soldDate?: string): Promise<WealthAsset> {
+  return apiClient.post(`/wealth/assets/${id}/sell`, { sold_value: soldValue, sold_date: soldDate ?? null })
+}
+
+export async function reopenAsset(id: string): Promise<WealthAsset> {
+  return apiClient.post(`/wealth/assets/${id}/reopen`)
+}
+
+export async function deleteAsset(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/assets/${id}`)
+}
+
+/* ---------------- category groups ---------------- */
+
+export async function listCategoryGroups(): Promise<WealthCategoryGroup[]> {
+  return apiClient.get('/wealth/category-groups')
+}
+
+export async function upsertCategoryGroup(
+  group: Partial<WealthCategoryGroup> & { name: string },
+): Promise<WealthCategoryGroup> {
+  return apiClient.put('/wealth/category-groups', group)
+}
+
+export async function deleteCategoryGroup(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/category-groups/${id}`)
+}
+
 /* ---------------- categories ---------------- */
 
 export async function listCategories(): Promise<WealthCategory[]> {
@@ -38,7 +80,7 @@ export async function listCategories(): Promise<WealthCategory[]> {
 export async function upsertCategory(
   category: Partial<WealthCategory> & {
     name: string
-    group: WealthCategory['group']
+    group_id: string
     kind: WealthCategory['kind']
   },
 ): Promise<WealthCategory> {
@@ -78,7 +120,7 @@ export async function listBudgets(): Promise<WealthBudget[]> {
 }
 
 export async function upsertBudget(
-  budget: Partial<WealthBudget> & { category_id: string; monthly_amount: number },
+  budget: Partial<WealthBudget> & { category_id: string; amount: number },
 ): Promise<WealthBudget> {
   return apiClient.put('/wealth/budgets', budget)
 }
@@ -101,6 +143,14 @@ export async function upsertGoal(
 
 export async function deleteGoal(id: string): Promise<void> {
   return apiClient.delete(`/wealth/goals/${id}`)
+}
+
+export async function achieveGoal(id: string): Promise<WealthGoal> {
+  return apiClient.post(`/wealth/goals/${id}/achieve`)
+}
+
+export async function reopenGoal(id: string): Promise<WealthGoal> {
+  return apiClient.post(`/wealth/goals/${id}/reopen`)
 }
 
 /* ---------------- forecast assumptions ---------------- */

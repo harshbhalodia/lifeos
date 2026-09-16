@@ -35,6 +35,14 @@ export function AccountsPage() {
 
       {error && <div className="callout callout-error">{error}</div>}
 
+      <div className="callout callout-info">
+        <strong>How this affects calculations:</strong> Credit and loan account balances are treated as debt
+        (subtracted from net worth). Investment and retirement accounts also count toward the "Investments"
+        figure. Whether an account is marked <strong>Liquid</strong> decides if its balance counts toward
+        "Liquid" net worth and the liquidity runway estimate — mark savings/checking as liquid, and
+        investment/retirement/property accounts as not liquid if you can't quickly access them.
+      </div>
+
       <div className="table-wrap">
         <table>
           <thead>

@@ -4,6 +4,7 @@ import { apiClient, ApiError, getToken, setToken } from '@/lib/apiClient'
 export interface AuthUser {
   id: string
   email: string
+  fiscal_year_start_month: number
   created_at: string
 }
 
@@ -12,6 +13,7 @@ interface AuthContextValue {
   loading: boolean
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => void
+  updateFiscalYearStartMonth: (month: number) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -54,6 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: () => {
         setToken(null)
         setUser(null)
+      },
+      updateFiscalYearStartMonth: async (month: number) => {
+        const updated = await apiClient.put<AuthUser>('/auth/me/settings', { fiscal_year_start_month: month })
+        setUser(updated)
       },
     }),
     [user, loading],

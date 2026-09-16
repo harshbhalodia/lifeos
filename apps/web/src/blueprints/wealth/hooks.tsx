@@ -3,8 +3,10 @@ import * as api from './api'
 import type {
   AnalyticsSummary,
   WealthAccount,
+  WealthAsset,
   WealthBudget,
   WealthCategory,
+  WealthCategoryGroup,
   WealthEntry,
   WealthForecastAssumption,
   WealthGoal,
@@ -12,6 +14,8 @@ import type {
 
 interface WealthDataValue {
   accounts: WealthAccount[]
+  assets: WealthAsset[]
+  categoryGroups: WealthCategoryGroup[]
   categories: WealthCategory[]
   entries: WealthEntry[]
   budgets: WealthBudget[]
@@ -27,6 +31,8 @@ const WealthDataContext = createContext<WealthDataValue | undefined>(undefined)
 
 export function WealthDataProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<WealthAccount[]>([])
+  const [assets, setAssets] = useState<WealthAsset[]>([])
+  const [categoryGroups, setCategoryGroups] = useState<WealthCategoryGroup[]>([])
   const [categories, setCategories] = useState<WealthCategory[]>([])
   const [entries, setEntries] = useState<WealthEntry[]>([])
   const [budgets, setBudgets] = useState<WealthBudget[]>([])
@@ -40,8 +46,10 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const [a, c, e, b, g, f, s] = await Promise.all([
+      const [a, as, cg, c, e, b, g, f, s] = await Promise.all([
         api.listAccounts(),
+        api.listAssets(),
+        api.listCategoryGroups(),
         api.listCategories(),
         api.listEntries(),
         api.listBudgets(),
@@ -50,6 +58,8 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
         api.getAnalyticsSummary(),
       ])
       setAccounts(a)
+      setAssets(as)
+      setCategoryGroups(cg)
       setCategories(c)
       setEntries(e)
       setBudgets(b)
@@ -68,8 +78,21 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   const value = useMemo<WealthDataValue>(
-    () => ({ accounts, categories, entries, budgets, goals, assumptions, analytics, loading, error, refresh }),
-    [accounts, categories, entries, budgets, goals, assumptions, analytics, loading, error, refresh],
+    () => ({
+      accounts,
+      assets,
+      categoryGroups,
+      categories,
+      entries,
+      budgets,
+      goals,
+      assumptions,
+      analytics,
+      loading,
+      error,
+      refresh,
+    }),
+    [accounts, assets, categoryGroups, categories, entries, budgets, goals, assumptions, analytics, loading, error, refresh],
   )
 
   return <WealthDataContext.Provider value={value}>{children}</WealthDataContext.Provider>

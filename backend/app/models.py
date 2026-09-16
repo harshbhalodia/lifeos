@@ -17,6 +17,8 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    # 1 = January .. 12 = December; the month a user's financial year starts on, for yearly budgets.
+    fiscal_year_start_month: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -35,17 +37,38 @@ class WealthAccount(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class WealthCategoryGroup(Base):
+    """User-defined bucket for categories (e.g. Fixed, Variable, Adhoc).
+
+    `is_essential` marks the group's spend as "essential" for the liquidity/runway
+    calculation (previously hardcoded to the fixed/variable groups).
+    """
+
+    __tablename__ = "wealth_category_groups"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    color: Mapped[str | None] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_essential: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class WealthCategory(Base):
     __tablename__ = "wealth_categories"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    group: Mapped[str] = mapped_column(String, nullable=False)
+    group_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("wealth_category_groups.id", ondelete="SET NULL"), nullable=True
+    )
     kind: Mapped[str] = mapped_column(String, nullable=False)
     color: Mapped[str | None] = mapped_column(String, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    group: Mapped["WealthCategoryGroup | None"] = relationship("WealthCategoryGroup")
 
 
 class WealthEntry(Base):
@@ -59,6 +82,8 @@ class WealthEntry(Base):
     payee: Mapped[str | None] = mapped_column(String, nullable=True)
     category_id: Mapped[str | None] = mapped_column(String, ForeignKey("wealth_categories.id", ondelete="SET NULL"), nullable=True)
     account_id: Mapped[str | None] = mapped_column(String, ForeignKey("wealth_accounts.id", ondelete="SET NULL"), nullable=True)
+    # Links this entry as a contribution towards a goal; goal.current_amount is derived from these.
+    goal_id: Mapped[str | None] = mapped_column(String, ForeignKey("wealth_goals.id", ondelete="SET NULL"), nullable=True, index=True)
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     recurrence_interval: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -72,9 +97,35 @@ class WealthBudget(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     category_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_categories.id", ondelete="CASCADE"))
-    monthly_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # "monthly" resets each calendar month; "yearly" tracks spend across the user's financial year.
+    period: Mapped[str] = mapped_column(String, default="monthly")
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
     warning_threshold: Mapped[float] = mapped_column(Float, default=80)
     critical_threshold: Mapped[float] = mapped_column(Float, default=100)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WealthAsset(Base):
+    """Physical/personal assets held outside financial accounts (property, vehicle, etc.).
+
+    Contributes `current_value` to net worth's illiquid bucket while `status == "holding"`.
+    Selling an asset keeps its history (purchase/sold values) instead of deleting the row.
+    """
+
+    __tablename__ = "wealth_assets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    asset_type: Mapped[str] = mapped_column(String, nullable=False)
+    purchase_value: Mapped[float] = mapped_column(Float, nullable=False)
+    purchase_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    current_value: Mapped[float] = mapped_column(Float, nullable=False)
+    current_value_updated_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="holding")  # holding | sold
+    sold_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sold_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -86,8 +137,10 @@ class WealthGoal(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     goal_type: Mapped[str] = mapped_column(String, nullable=False)
     target_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # Derived from linked wealth_entries when any exist; otherwise set manually.
     current_amount: Mapped[float] = mapped_column(Float, default=0)
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    achieved_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

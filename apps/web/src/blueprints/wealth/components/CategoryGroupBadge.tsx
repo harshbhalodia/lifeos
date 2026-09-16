@@ -1,19 +1,13 @@
-import type { CategoryGroup } from '../types'
-import { CATEGORY_GROUP_LABELS } from '../types'
+import type { WealthCategoryGroup } from '../types'
 
-const GROUP_COLORS: Record<CategoryGroup, string> = {
-  fixed: '#2f6d4f',
-  variable: '#a15c07',
-  adhoc: '#b3261e',
-  investments: '#275475',
-  new_investments: '#6d4fa1',
-  income: '#1f4d38',
-}
+const FALLBACK_COLOR = '#6b6255'
 
-export function CategoryGroupBadge({ group }: { group: CategoryGroup }) {
+/** Renders a colored pill for a user-defined category group (or "Uncategorized" if none). */
+export function CategoryGroupBadge({ group }: { group: WealthCategoryGroup | null | undefined }) {
+  const color = group?.color || FALLBACK_COLOR
   return (
-    <span className="tag-pill" style={{ background: `${GROUP_COLORS[group]}1a`, color: GROUP_COLORS[group] }}>
-      {CATEGORY_GROUP_LABELS[group]}
+    <span className="tag-pill" style={{ background: `${color}1a`, color }}>
+      {group?.name ?? 'Uncategorized'}
     </span>
   )
 }

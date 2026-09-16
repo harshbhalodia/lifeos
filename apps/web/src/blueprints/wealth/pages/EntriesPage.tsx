@@ -9,13 +9,15 @@ import type { EntryType, RecurrenceInterval, WealthEntry } from '../types'
 import { formatCurrency, formatDate } from '@/lib/format'
 
 export function EntriesPage() {
-  const { entries, categories, accounts, loading, error, refresh } = useWealthData()
+  const { entries, categories, categoryGroups, accounts, goals, loading, error, refresh } = useWealthData()
   const [editing, setEditing] = useState<WealthEntry | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [filterType, setFilterType] = useState<'all' | EntryType>('all')
 
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
+  const groupById = useMemo(() => new Map(categoryGroups.map((g) => [g.id, g])), [categoryGroups])
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
+  const goalById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals])
 
   const filtered = entries.filter((e) => filterType === 'all' || e.type === filterType)
 
@@ -60,6 +62,7 @@ export function EntriesPage() {
               <th>Payee</th>
               <th>Category</th>
               <th>Account</th>
+              <th>Goal</th>
               <th>Recurring</th>
               <th>Amount</th>
               <th></th>
@@ -68,13 +71,13 @@ export function EntriesPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   Loading…
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   No entries yet.
                 </td>
               </tr>
@@ -82,12 +85,16 @@ export function EntriesPage() {
               filtered.map((entry) => {
                 const category = entry.category_id ? categoryById.get(entry.category_id) : undefined
                 const account = entry.account_id ? accountById.get(entry.account_id) : undefined
+                const goal = entry.goal_id ? goalById.get(entry.goal_id) : undefined
                 return (
                   <tr key={entry.id} onClick={() => setEditing(entry)} style={{ cursor: 'pointer' }}>
                     <td className="muted">{formatDate(entry.entry_date)}</td>
                     <td>{entry.payee || '—'}</td>
-                    <td>{category ? <CategoryGroupBadge group={category.group} /> : '—'} {category?.name}</td>
+                    <td>
+                      {category ? <CategoryGroupBadge group={groupById.get(category.group_id ?? '')} /> : '—'} {category?.name}
+                    </td>
                     <td className="muted">{account?.name ?? '—'}</td>
+                    <td className="muted">{goal?.name ?? '—'}</td>
                     <td className="muted">{entry.is_recurring ? entry.recurrence_interval ?? 'yes' : '—'}</td>
                     <td className={entry.type === 'income' ? 'amount-income' : 'amount-expense'}>
                       {entry.type === 'income' ? '+' : '-'}
@@ -135,13 +142,14 @@ function EntryForm({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
-  const { categories, accounts } = useWealthData()
+  const { categories, accounts, goals } = useWealthData()
   const [type, setType] = useState<EntryType>(entry?.type ?? 'expense')
   const [amount, setAmount] = useState(String(entry?.amount ?? ''))
   const [entryDate, setEntryDate] = useState(entry?.entry_date ?? new Date().toISOString().slice(0, 10))
   const [payee, setPayee] = useState(entry?.payee ?? '')
   const [categoryId, setCategoryId] = useState(entry?.category_id ?? '')
   const [accountId, setAccountId] = useState(entry?.account_id ?? '')
+  const [goalId, setGoalId] = useState(entry?.goal_id ?? '')
   const [isRecurring, setIsRecurring] = useState(entry?.is_recurring ?? false)
   const [recurrence, setRecurrence] = useState<RecurrenceInterval>(entry?.recurrence_interval ?? 'monthly')
   const [notes, setNotes] = useState(entry?.notes ?? '')
@@ -161,6 +169,7 @@ function EntryForm({
         payee: payee || null,
         category_id: categoryId || null,
         account_id: accountId || null,
+        goal_id: goalId || null,
         is_recurring: isRecurring,
         recurrence_interval: isRecurring ? recurrence : null,
         notes: notes || null,
@@ -212,6 +221,17 @@ function EntryForm({
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="span-2">
+          Contributes to goal
+          <select value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+            <option value="">None</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
               </option>
             ))}
           </select>

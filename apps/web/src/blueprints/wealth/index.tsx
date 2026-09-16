@@ -1,9 +1,10 @@
-import { BarChart3, Bot, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
+import { BarChart3, Bot, Home, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
 import type { Blueprint } from '@/core/blueprints/types'
 import { WealthDataProvider } from './hooks'
 import { WealthDashboardWidget } from './components/WealthDashboardWidget'
 import { WealthOverviewPage } from './pages/WealthOverviewPage'
 import { AccountsPage } from './pages/AccountsPage'
+import { AssetsPage } from './pages/AssetsPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { EntriesPage } from './pages/EntriesPage'
 import { BudgetsPage } from './pages/BudgetsPage'
@@ -26,6 +27,7 @@ export const wealthBlueprint: Blueprint = {
   navItems: [
     { path: '', label: 'Overview', icon: Wallet, end: true },
     { path: 'accounts', label: 'Accounts', icon: Landmark },
+    { path: 'assets', label: 'Assets', icon: Home },
     { path: 'categories', label: 'Categories', icon: Tags },
     { path: 'entries', label: 'Entries', icon: Receipt },
     { path: 'budgets', label: 'Budgets', icon: PiggyBank },
@@ -37,6 +39,7 @@ export const wealthBlueprint: Blueprint = {
   routes: [
     { path: '', element: withData(<WealthOverviewPage />) },
     { path: 'accounts', element: withData(<AccountsPage />) },
+    { path: 'assets', element: withData(<AssetsPage />) },
     { path: 'categories', element: withData(<CategoriesPage />) },
     { path: 'entries', element: withData(<EntriesPage />) },
     { path: 'budgets', element: withData(<BudgetsPage />) },

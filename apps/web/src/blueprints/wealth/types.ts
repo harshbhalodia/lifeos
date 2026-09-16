@@ -1,6 +1,5 @@
 /** Wealth blueprint domain types — mirror the FastAPI backend's Pydantic schemas. */
 
-export type CategoryGroup = 'fixed' | 'variable' | 'adhoc' | 'investments' | 'new_investments' | 'income'
 export type EntryType = 'income' | 'expense'
 export type RecurrenceInterval = 'weekly' | 'monthly' | 'yearly' | null
 export type AccountType =
@@ -18,6 +17,9 @@ export type GoalType =
   | 'investment'
   | 'major_purchase'
   | 'other'
+export type BudgetPeriod = 'monthly' | 'yearly'
+export type AssetType = 'property' | 'vehicle' | 'jewelry' | 'collectible' | 'other'
+export type AssetStatus = 'holding' | 'sold'
 
 export interface WealthAccount {
   id: string
@@ -31,10 +33,21 @@ export interface WealthAccount {
   created_at: string
 }
 
+/** User-defined category bucket (e.g. Fixed, Variable, Adhoc) — fully configurable per user. */
+export interface WealthCategoryGroup {
+  id: string
+  name: string
+  color: string | null
+  sort_order: number
+  /** Counts toward the liquidity/runway "essential spend" calculation. */
+  is_essential: boolean
+  created_at: string
+}
+
 export interface WealthCategory {
   id: string
   name: string
-  group: CategoryGroup
+  group_id: string | null
   kind: EntryType
   color: string | null
   is_archived: boolean
@@ -49,6 +62,8 @@ export interface WealthEntry {
   payee: string | null
   category_id: string | null
   account_id: string | null
+  /** Links this entry as a contribution towards a goal; goal.current_amount is derived from these. */
+  goal_id: string | null
   is_recurring: boolean
   recurrence_interval: RecurrenceInterval
   notes: string | null
@@ -59,7 +74,8 @@ export interface WealthEntry {
 export interface WealthBudget {
   id: string
   category_id: string
-  monthly_amount: number
+  period: BudgetPeriod
+  amount: number
   warning_threshold: number
   critical_threshold: number
   created_at: string
@@ -72,6 +88,7 @@ export interface WealthGoal {
   target_amount: number
   current_amount: number
   target_date: string | null
+  achieved_at: string | null
   created_at: string
 }
 
@@ -85,13 +102,20 @@ export interface WealthForecastAssumption {
   created_at: string
 }
 
-export const CATEGORY_GROUP_LABELS: Record<CategoryGroup, string> = {
-  fixed: 'Fixed',
-  variable: 'Variable',
-  adhoc: 'Adhoc',
-  investments: 'Investments',
-  new_investments: 'New Investments',
-  income: 'Income',
+/** Physical/personal asset held outside financial accounts, e.g. a home or car. */
+export interface WealthAsset {
+  id: string
+  name: string
+  asset_type: AssetType
+  purchase_value: number
+  purchase_date: string | null
+  current_value: number
+  current_value_updated_at: string | null
+  status: AssetStatus
+  sold_value: number | null
+  sold_date: string | null
+  notes: string | null
+  created_at: string
 }
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -113,6 +137,19 @@ export const GOAL_TYPE_LABELS: Record<GoalType, string> = {
   other: 'Other',
 }
 
+export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+  property: 'Property',
+  vehicle: 'Vehicle',
+  jewelry: 'Jewelry',
+  collectible: 'Collectible',
+  other: 'Other',
+}
+
+export const MONTH_LABELS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
 /* ---------------- server-computed analytics (see backend app/services/analytics.py) ---------------- */
 
 export interface NetWorthSummary {
@@ -120,6 +157,8 @@ export interface NetWorthSummary {
   liquid: number
   illiquid: number
   investments: number
+  /** Held (non-sold) physical assets like property/vehicles — already included in `illiquid`. */
+  personal_assets: number
 }
 
 export interface CashflowPoint {
@@ -131,7 +170,9 @@ export interface CashflowPoint {
 }
 
 export interface CategoryGroupTotal {
-  group: CategoryGroup
+  group_id: string | null
+  group_name: string
+  color: string | null
   total: number
 }
 
@@ -139,17 +180,30 @@ export interface BudgetStatus {
   budget_id: string
   category_id: string
   category_name: string
-  monthly_amount: number
+  period: BudgetPeriod
+  amount: number
   spent: number
   percent: number
   status: 'ok' | 'warning' | 'critical'
-  projected_month_end: number
+  projected_period_end: number
 }
 
 export interface LiquidityInfo {
   liquid_balance: number
   avg_monthly_essential_spend: number
   months_of_runway: number | null
+}
+
+export interface AssetPerformance {
+  asset_id: string
+  name: string
+  asset_type: string
+  status: string
+  purchase_value: number
+  current_value: number
+  gain_loss: number
+  gain_loss_percent: number | null
+  holding_period_days: number | null
 }
 
 export interface NetWorthProjectionPoint {
@@ -166,6 +220,7 @@ export interface AnalyticsSummary {
   cashflow: CashflowPoint[]
   category_breakdown: CategoryGroupTotal[]
   budget_statuses: BudgetStatus[]
+  asset_performance: AssetPerformance[]
 }
 
 /* ---------------- agents & insights ---------------- */

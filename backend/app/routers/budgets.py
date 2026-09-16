@@ -24,7 +24,7 @@ def upsert_budget(payload: BudgetIn, user: User = Depends(get_current_user), db:
         budget = WealthBudget(user_id=user.id)
         db.add(budget)
 
-    for field in ("category_id", "monthly_amount", "warning_threshold", "critical_threshold"):
+    for field in ("category_id", "period", "amount", "warning_threshold", "critical_threshold"):
         setattr(budget, field, getattr(payload, field))
 
     db.commit()

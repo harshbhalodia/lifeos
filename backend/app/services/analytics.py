@@ -10,7 +10,7 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
 
-from app.models import WealthAccount, WealthBudget, WealthCategory, WealthEntry, WealthForecastAssumption
+from app.models import WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption
 
 
 def _round2(value: float) -> float:
@@ -25,7 +25,16 @@ def _month_label(d: date) -> str:
     return d.strftime("%b")
 
 
-def compute_net_worth(accounts: list[WealthAccount]) -> dict:
+def fiscal_year_window(fiscal_year_start_month: int, reference_date: date) -> tuple[date, date]:
+    """Returns (start, end) inclusive dates of the financial year containing reference_date,
+    given the month (1-12) the user's financial year starts on."""
+    start_year = reference_date.year if reference_date.month >= fiscal_year_start_month else reference_date.year - 1
+    start = date(start_year, fiscal_year_start_month, 1)
+    end = date(start_year + 1, fiscal_year_start_month, 1) - timedelta(days=1)
+    return start, end
+
+
+def compute_net_worth(accounts: list[WealthAccount], assets: list[WealthAsset] | None = None) -> dict:
     liquid = 0.0
     illiquid = 0.0
     investments = 0.0
@@ -39,11 +48,19 @@ def compute_net_worth(accounts: list[WealthAccount]) -> dict:
         else:
             illiquid += balance
 
+    # Held physical assets (home, car, ...) count as illiquid net worth; sold ones are excluded.
+    personal_assets = 0.0
+    for asset in assets or []:
+        if asset.status == "holding":
+            personal_assets += asset.current_value
+            illiquid += asset.current_value
+
     return {
         "total": _round2(liquid + illiquid),
         "liquid": _round2(liquid),
         "illiquid": _round2(illiquid),
         "investments": _round2(investments),
+        "personal_assets": _round2(personal_assets),
     }
 
 
@@ -83,10 +100,11 @@ def compute_cashflow_series(entries: list[WealthEntry], months_back: int = 12, t
 
 
 def compute_category_group_breakdown(
-    entries: list[WealthEntry], categories: list[WealthCategory], month: str | None = None
+    entries: list[WealthEntry], categories: list[WealthCategory], groups: list[WealthCategoryGroup], month: str | None = None
 ) -> list[dict]:
     category_by_id = {c.id: c for c in categories}
-    totals: dict[str, float] = defaultdict(float)
+    group_by_id = {g.id: g for g in groups}
+    totals: dict[str | None, float] = defaultdict(float)
 
     for entry in entries:
         if entry.type != "expense":
@@ -94,20 +112,28 @@ def compute_category_group_breakdown(
         if month and _month_key(entry.entry_date) != month:
             continue
         category = category_by_id.get(entry.category_id) if entry.category_id else None
-        group = category.group if category else "variable"
-        totals[group] += entry.amount
+        group_id = category.group_id if category else None
+        totals[group_id] += entry.amount
 
-    return sorted(
-        ({"group": g, "total": _round2(t)} for g, t in totals.items()),
-        key=lambda x: x["total"],
-        reverse=True,
-    )
+    results = []
+    for group_id, total in totals.items():
+        group = group_by_id.get(group_id) if group_id else None
+        results.append(
+            {
+                "group_id": group_id,
+                "group_name": group.name if group else "Uncategorized",
+                "color": group.color if group else None,
+                "total": _round2(total),
+            }
+        )
+    return sorted(results, key=lambda x: x["total"], reverse=True)
 
 
 def compute_budget_statuses(
     budgets: list[WealthBudget],
     entries: list[WealthEntry],
     categories: list[WealthCategory],
+    fiscal_year_start_month: int = 1,
     reference_date: date | None = None,
 ) -> list[dict]:
     reference_date = reference_date or date.today()
@@ -115,16 +141,28 @@ def compute_budget_statuses(
     month = _month_key(reference_date)
     day_of_month = reference_date.day
     days_in_month = monthrange(reference_date.year, reference_date.month)[1]
+    fy_start, fy_end = fiscal_year_window(fiscal_year_start_month, reference_date)
 
     results = []
     for budget in budgets:
-        spent = sum(
-            e.amount
-            for e in entries
-            if e.type == "expense" and e.category_id == budget.category_id and _month_key(e.entry_date) == month
-        )
-        percent = (spent / budget.monthly_amount * 100) if budget.monthly_amount > 0 else 0.0
-        projected = (spent / day_of_month * days_in_month) if day_of_month > 0 else spent
+        if budget.period == "yearly":
+            spent = sum(
+                e.amount
+                for e in entries
+                if e.type == "expense" and e.category_id == budget.category_id and fy_start <= e.entry_date <= fy_end
+            )
+            days_elapsed = (reference_date - fy_start).days + 1
+            days_total = (fy_end - fy_start).days + 1
+            projected = (spent / days_elapsed * days_total) if days_elapsed > 0 else spent
+        else:
+            spent = sum(
+                e.amount
+                for e in entries
+                if e.type == "expense" and e.category_id == budget.category_id and _month_key(e.entry_date) == month
+            )
+            projected = (spent / day_of_month * days_in_month) if day_of_month > 0 else spent
+
+        percent = (spent / budget.amount * 100) if budget.amount > 0 else 0.0
 
         status = "ok"
         if percent >= budget.critical_threshold:
@@ -138,11 +176,12 @@ def compute_budget_statuses(
                 "budget_id": budget.id,
                 "category_id": budget.category_id,
                 "category_name": category.name if category else "Uncategorized",
-                "monthly_amount": budget.monthly_amount,
+                "period": budget.period,
+                "amount": budget.amount,
                 "spent": _round2(spent),
                 "percent": _round2(percent),
                 "status": status,
-                "projected_month_end": _round2(projected),
+                "projected_period_end": _round2(projected),
             }
         )
     return results
@@ -152,12 +191,14 @@ def compute_liquidity(
     accounts: list[WealthAccount],
     entries: list[WealthEntry],
     categories: list[WealthCategory],
+    groups: list[WealthCategoryGroup],
     months_back: int = 3,
     today: date | None = None,
 ) -> dict:
     today = today or date.today()
     net_worth = compute_net_worth(accounts)
     category_by_id = {c.id: c for c in categories}
+    group_by_id = {g.id: g for g in groups}
 
     month_index = today.month - 1 - months_back
     year = today.year + month_index // 12
@@ -173,8 +214,8 @@ def compute_liquidity(
         if entry.entry_date < cutoff:
             continue
         category = category_by_id.get(entry.category_id) if entry.category_id else None
-        group = category.group if category else None
-        if group in ("fixed", "variable"):
+        group = group_by_id.get(category.group_id) if category and category.group_id else None
+        if group and group.is_essential:
             essential_total += entry.amount
             months_seen.add(_month_key(entry.entry_date))
 
@@ -192,10 +233,11 @@ def project_net_worth(
     accounts: list[WealthAccount],
     assumption: WealthForecastAssumption,
     monthly_net_contribution: float,
+    assets: list[WealthAsset] | None = None,
     today: date | None = None,
 ) -> list[dict]:
     today = today or date.today()
-    net_worth = compute_net_worth(accounts)
+    net_worth = compute_net_worth(accounts, assets)
     annual_contribution = monthly_net_contribution * 12
     rate = assumption.annual_return_rate
 
@@ -226,3 +268,30 @@ def project_net_worth(
         )
 
     return points
+
+
+def compute_asset_performance(assets: list[WealthAsset], today: date | None = None) -> list[dict]:
+    """Deterministic gain/loss facts per asset, handed to the asset advisor agent to interpret
+    (the agent only explains these numbers — it never decides or invents a hold/sell verdict itself)."""
+    today = today or date.today()
+    results = []
+    for asset in assets:
+        reference_value = asset.sold_value if asset.status == "sold" and asset.sold_value is not None else asset.current_value
+        gain_loss = reference_value - asset.purchase_value
+        gain_loss_percent = _round2(gain_loss / asset.purchase_value * 100) if asset.purchase_value > 0 else None
+        end_date = asset.sold_date if asset.status == "sold" and asset.sold_date else today
+        holding_period_days = (end_date - asset.purchase_date).days if asset.purchase_date else None
+        results.append(
+            {
+                "asset_id": asset.id,
+                "name": asset.name,
+                "asset_type": asset.asset_type,
+                "status": asset.status,
+                "purchase_value": asset.purchase_value,
+                "current_value": _round2(reference_value),
+                "gain_loss": _round2(gain_loss),
+                "gain_loss_percent": gain_loss_percent,
+                "holding_period_days": holding_period_days,
+            }
+        )
+    return results

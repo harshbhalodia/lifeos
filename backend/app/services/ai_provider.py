@@ -33,7 +33,19 @@ def _extract_text(payload: dict, response_field: str) -> str | None:
     if isinstance(node, str):
         return node
 
-    # 2. fall back to common shapes
+    # 2. "responses"-style shape: output is a list of {type, content} segments
+    # (e.g. LM Studio/OpenAI responses API) — prefer the final "message" segment
+    # over intermediate "reasoning" ones.
+    output = payload.get("output")
+    if isinstance(output, list):
+        for item in reversed(output):
+            if isinstance(item, dict) and item.get("type") == "message" and isinstance(item.get("content"), str):
+                return item["content"]
+        for item in reversed(output):
+            if isinstance(item, dict) and isinstance(item.get("content"), str):
+                return item["content"]
+
+    # 3. fall back to common shapes
     for key in ("output", "response", "content", "text"):
         value = payload.get(key)
         if isinstance(value, str):

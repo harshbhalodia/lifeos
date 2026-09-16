@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,28 @@ def upsert_goal(payload: GoalIn, user: User = Depends(get_current_user), db: Ses
     for field in ("name", "goal_type", "target_amount", "current_amount", "target_date"):
         setattr(goal, field, getattr(payload, field))
 
+    db.commit()
+    db.refresh(goal)
+    return goal
+
+
+@router.post("/{goal_id}/achieve", response_model=GoalOut)
+def achieve_goal(goal_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    goal = db.get(WealthGoal, goal_id)
+    if not goal or goal.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    goal.achieved_at = date.today()
+    db.commit()
+    db.refresh(goal)
+    return goal
+
+
+@router.post("/{goal_id}/reopen", response_model=GoalOut)
+def reopen_goal(goal_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    goal = db.get(WealthGoal, goal_id)
+    if not goal or goal.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    goal.achieved_at = None
     db.commit()
     db.refresh(goal)
     return goal

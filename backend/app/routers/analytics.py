@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import User, WealthAccount, WealthBudget, WealthCategory, WealthEntry, WealthForecastAssumption
+from app.models import User, WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption
 from app.schemas import AnalyticsSummary, NetWorthProjectionPoint
 from app.services.analytics import (
+    compute_asset_performance,
     compute_budget_statuses,
     compute_cashflow_series,
     compute_category_group_breakdown,
@@ -20,21 +21,24 @@ router = APIRouter(prefix="/wealth/analytics", tags=["wealth:analytics"])
 def _load(db: Session, user_id: str):
     accounts = db.query(WealthAccount).filter(WealthAccount.user_id == user_id).all()
     categories = db.query(WealthCategory).filter(WealthCategory.user_id == user_id).all()
+    groups = db.query(WealthCategoryGroup).filter(WealthCategoryGroup.user_id == user_id).all()
     entries = db.query(WealthEntry).filter(WealthEntry.user_id == user_id).all()
     budgets = db.query(WealthBudget).filter(WealthBudget.user_id == user_id).all()
-    return accounts, categories, entries, budgets
+    assets = db.query(WealthAsset).filter(WealthAsset.user_id == user_id).all()
+    return accounts, categories, groups, entries, budgets, assets
 
 
 @router.get("/summary", response_model=AnalyticsSummary)
 def analytics_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    accounts, categories, entries, budgets = _load(db, user.id)
+    accounts, categories, groups, entries, budgets, assets = _load(db, user.id)
 
     return AnalyticsSummary(
-        net_worth=compute_net_worth(accounts),
-        liquidity=compute_liquidity(accounts, entries, categories),
+        net_worth=compute_net_worth(accounts, assets),
+        liquidity=compute_liquidity(accounts, entries, categories, groups),
         cashflow=compute_cashflow_series(entries, months_back=12),
-        category_breakdown=compute_category_group_breakdown(entries, categories),
-        budget_statuses=compute_budget_statuses(budgets, entries, categories),
+        category_breakdown=compute_category_group_breakdown(entries, categories, groups),
+        budget_statuses=compute_budget_statuses(budgets, entries, categories, user.fiscal_year_start_month),
+        asset_performance=compute_asset_performance(assets),
     )
 
 
@@ -46,6 +50,7 @@ def analytics_projection(
 ):
     accounts = db.query(WealthAccount).filter(WealthAccount.user_id == user.id).all()
     entries = db.query(WealthEntry).filter(WealthEntry.user_id == user.id).all()
+    assets = db.query(WealthAsset).filter(WealthAsset.user_id == user.id).all()
 
     if assumption_id:
         assumption = db.get(WealthForecastAssumption, assumption_id)
@@ -62,4 +67,4 @@ def analytics_projection(
     cashflow = compute_cashflow_series(entries, months_back=3)
     avg_monthly_net = sum(c["net"] for c in cashflow) / len(cashflow) if cashflow else 0.0
 
-    return project_net_worth(accounts, assumption, avg_monthly_net)
+    return project_net_worth(accounts, assumption, avg_monthly_net, assets)

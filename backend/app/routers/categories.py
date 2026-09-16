@@ -14,7 +14,7 @@ def list_categories(user: User = Depends(get_current_user), db: Session = Depend
     return (
         db.query(WealthCategory)
         .filter(WealthCategory.user_id == user.id)
-        .order_by(WealthCategory.group, WealthCategory.name)
+        .order_by(WealthCategory.group_id, WealthCategory.name)
         .all()
     )
 
@@ -29,7 +29,7 @@ def upsert_category(payload: CategoryIn, user: User = Depends(get_current_user),
         category = WealthCategory(user_id=user.id)
         db.add(category)
 
-    for field in ("name", "group", "kind", "color", "is_archived"):
+    for field in ("name", "group_id", "kind", "color", "is_archived"):
         setattr(category, field, getattr(payload, field))
 
     db.commit()
