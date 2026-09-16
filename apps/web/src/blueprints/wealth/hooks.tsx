@@ -7,6 +7,7 @@ import type {
   WealthBudget,
   WealthCategory,
   WealthCategoryGroup,
+  WealthCategoryRule,
   WealthEntry,
   WealthForecastAssumption,
   WealthGoal,
@@ -17,6 +18,7 @@ interface WealthDataValue {
   assets: WealthAsset[]
   categoryGroups: WealthCategoryGroup[]
   categories: WealthCategory[]
+  categoryRules: WealthCategoryRule[]
   entries: WealthEntry[]
   budgets: WealthBudget[]
   goals: WealthGoal[]
@@ -34,6 +36,7 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
   const [assets, setAssets] = useState<WealthAsset[]>([])
   const [categoryGroups, setCategoryGroups] = useState<WealthCategoryGroup[]>([])
   const [categories, setCategories] = useState<WealthCategory[]>([])
+  const [categoryRules, setCategoryRules] = useState<WealthCategoryRule[]>([])
   const [entries, setEntries] = useState<WealthEntry[]>([])
   const [budgets, setBudgets] = useState<WealthBudget[]>([])
   const [goals, setGoals] = useState<WealthGoal[]>([])
@@ -46,11 +49,12 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const [a, as, cg, c, e, b, g, f, s] = await Promise.all([
+      const [a, as, cg, c, cr, e, b, g, f, s] = await Promise.all([
         api.listAccounts(),
         api.listAssets(),
         api.listCategoryGroups(),
         api.listCategories(),
+        api.listCategoryRules(),
         api.listEntries(),
         api.listBudgets(),
         api.listGoals(),
@@ -61,6 +65,7 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
       setAssets(as)
       setCategoryGroups(cg)
       setCategories(c)
+      setCategoryRules(cr)
       setEntries(e)
       setBudgets(b)
       setGoals(g)
@@ -83,6 +88,7 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
       assets,
       categoryGroups,
       categories,
+      categoryRules,
       entries,
       budgets,
       goals,
@@ -92,7 +98,7 @@ export function WealthDataProvider({ children }: { children: ReactNode }) {
       error,
       refresh,
     }),
-    [accounts, assets, categoryGroups, categories, entries, budgets, goals, assumptions, analytics, loading, error, refresh],
+    [accounts, assets, categoryGroups, categories, categoryRules, entries, budgets, goals, assumptions, analytics, loading, error, refresh],
   )
 
   return <WealthDataContext.Provider value={value}>{children}</WealthDataContext.Provider>

@@ -142,6 +142,22 @@ class CategoryOut(ORMModel):
     created_at: datetime
 
 
+# ---------------- category rules ----------------
+
+
+class CategoryRuleIn(BaseModel):
+    id: str | None = None
+    keyword: str
+    category_id: str
+
+
+class CategoryRuleOut(ORMModel):
+    id: str
+    keyword: str
+    category_id: str
+    created_at: datetime
+
+
 # ---------------- entries ----------------
 
 

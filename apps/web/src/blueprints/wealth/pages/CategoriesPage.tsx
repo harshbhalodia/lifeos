@@ -5,13 +5,14 @@ import { useWealthData } from '../hooks'
 import * as api from '../api'
 import { Modal } from '../components/Modal'
 import { CategoryGroupBadge } from '../components/CategoryGroupBadge'
-import type { EntryType, WealthCategory, WealthCategoryGroup } from '../types'
+import type { EntryType, WealthCategory, WealthCategoryGroup, WealthCategoryRule } from '../types'
 
 export function CategoriesPage() {
   const { categories, categoryGroups, loading, error, refresh } = useWealthData()
   const [editing, setEditing] = useState<WealthCategory | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [manageGroups, setManageGroups] = useState(false)
+  const [manageRules, setManageRules] = useState(false)
 
   const groupById = new Map(categoryGroups.map((g) => [g.id, g]))
 
@@ -37,6 +38,9 @@ export function CategoriesPage() {
         <div className="row">
           <button className="btn" onClick={() => setManageGroups(true)}>
             <Settings2 size={14} /> Manage groups
+          </button>
+          <button className="btn" onClick={() => setManageRules(true)}>
+            <Settings2 size={14} /> Statement mapping rules
           </button>
           <button
             className="btn btn-primary"
@@ -108,6 +112,7 @@ export function CategoriesPage() {
       )}
 
       {manageGroups && <CategoryGroupsManager onClose={() => setManageGroups(false)} onSaved={refresh} />}
+      {manageRules && <CategoryRulesManager onClose={() => setManageRules(false)} />}
     </div>
   )
 }
@@ -308,6 +313,137 @@ function CategoryGroupForm({
             style={{ marginRight: 8, width: 'auto' }}
           />
           Essential spend (counts toward liquidity runway)
+        </label>
+        <div className="span-2 row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+/** Manages keyword -> category mapping rules used to auto-categorize PDF/CSV statement imports. */
+function CategoryRulesManager({ onClose }: { onClose: () => void }) {
+  const { categoryRules, categories, refresh } = useWealthData()
+  const [editing, setEditing] = useState<WealthCategoryRule | 'new' | null>(null)
+  const categoryById = new Map(categories.map((c) => [c.id, c]))
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this mapping rule?')) return
+    await api.deleteCategoryRule(id)
+    await refresh()
+  }
+
+  return (
+    <Modal title="Statement mapping rules" onClose={onClose}>
+      <div className="stack">
+        <p className="muted">
+          When a transaction's description contains one of these keywords, the matching category is applied
+          automatically during CSV/PDF statement import — this always overrides the AI's own guess.
+        </p>
+        <div className="table-wrap" style={{ border: 'none' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Keyword</th>
+                <th>Category</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryRules.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="muted">
+                    No mapping rules yet.
+                  </td>
+                </tr>
+              ) : (
+                categoryRules.map((r) => (
+                  <tr key={r.id} onClick={() => setEditing(r)} style={{ cursor: 'pointer' }}>
+                    <td>{r.keyword}</td>
+                    <td className="muted">{categoryById.get(r.category_id)?.name ?? '—'}</td>
+                    <td style={{ width: 40 }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleDelete(r.id)
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <button className="btn" onClick={() => setEditing('new')} disabled={categories.length === 0}>
+          <Plus size={14} /> Add mapping rule
+        </button>
+      </div>
+
+      {editing && (
+        <CategoryRuleForm
+          rule={editing === 'new' ? null : editing}
+          categories={categories}
+          onClose={() => setEditing(null)}
+          onSaved={refresh}
+        />
+      )}
+    </Modal>
+  )
+}
+
+function CategoryRuleForm({
+  rule,
+  categories,
+  onClose,
+  onSaved,
+}: {
+  rule: WealthCategoryRule | null
+  categories: WealthCategory[]
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [keyword, setKeyword] = useState(rule?.keyword ?? '')
+  const [categoryId, setCategoryId] = useState(rule?.category_id ?? categories[0]?.id ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await api.upsertCategoryRule({ id: rule?.id, keyword, category_id: categoryId })
+      await onSaved()
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={rule ? 'Edit mapping rule' : 'Add mapping rule'} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="form-grid">
+        <label className="span-2">
+          Keyword (matched case-insensitively against the statement description)
+          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="e.g. AMAZON" required />
+        </label>
+        <label className="span-2">
+          Category
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </label>
         <div className="span-2 row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" className="btn" onClick={onClose}>

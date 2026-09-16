@@ -1,4 +1,4 @@
-import { BarChart3, Bot, Home, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
+import { BarChart3, Bot, CreditCard, Home, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
 import type { Blueprint } from '@/core/blueprints/types'
 import { WealthDataProvider } from './hooks'
 import { WealthDashboardWidget } from './components/WealthDashboardWidget'
@@ -11,6 +11,7 @@ import { BudgetsPage } from './pages/BudgetsPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { ImportPage } from './pages/ImportPage'
+import { StatementImportPage } from './pages/StatementImportPage'
 import { InsightsPage } from './pages/InsightsPage'
 
 function withData(children: React.ReactNode) {
@@ -35,6 +36,7 @@ export const wealthBlueprint: Blueprint = {
     { path: 'analytics', label: 'Analytics', icon: BarChart3 },
     { path: 'insights', label: 'Insights', icon: Bot },
     { path: 'import', label: 'Import CSV', icon: UploadCloud },
+    { path: 'statement-import', label: 'Card Statement', icon: CreditCard },
   ],
   routes: [
     { path: '', element: withData(<WealthOverviewPage />) },
@@ -47,6 +49,7 @@ export const wealthBlueprint: Blueprint = {
     { path: 'analytics', element: withData(<AnalyticsPage />) },
     { path: 'insights', element: withData(<InsightsPage />) },
     { path: 'import', element: withData(<ImportPage />) },
+    { path: 'statement-import', element: withData(<StatementImportPage />) },
   ],
   DashboardWidget: (props) => withData(<WealthDashboardWidget {...props} />),
 }

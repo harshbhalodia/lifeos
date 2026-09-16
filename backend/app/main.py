@@ -17,8 +17,10 @@ from app.routers import (
     budgets,
     categories,
     category_groups,
+    category_rules,
     entries,
     goals,
+    statements,
 )
 from app.security import hash_password
 from app.services.defaults import seed_default_category_groups
@@ -65,6 +67,7 @@ app.include_router(accounts.router)
 app.include_router(assets.router)
 app.include_router(categories.router)
 app.include_router(category_groups.router)
+app.include_router(category_rules.router)
 app.include_router(entries.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
@@ -73,6 +76,7 @@ app.include_router(analytics.router)
 app.include_router(agents.router)
 app.include_router(agents.insights_router)
 app.include_router(ai.router)
+app.include_router(statements.router)
 
 
 @app.get("/health")

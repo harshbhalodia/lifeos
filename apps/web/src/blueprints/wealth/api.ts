@@ -5,11 +5,13 @@ import type {
   AnalyticsSummary,
   Insight,
   NetWorthProjectionPoint,
+  ParsedStatementTransaction,
   WealthAccount,
   WealthAsset,
   WealthBudget,
   WealthCategory,
   WealthCategoryGroup,
+  WealthCategoryRule,
   WealthEntry,
   WealthForecastAssumption,
   WealthGoal,
@@ -89,6 +91,30 @@ export async function upsertCategory(
 
 export async function deleteCategory(id: string): Promise<void> {
   return apiClient.delete(`/wealth/categories/${id}`)
+}
+
+/* ---------------- category rules ---------------- */
+
+export async function listCategoryRules(): Promise<WealthCategoryRule[]> {
+  return apiClient.get('/wealth/category-rules')
+}
+
+export async function upsertCategoryRule(
+  rule: Partial<WealthCategoryRule> & { keyword: string; category_id: string },
+): Promise<WealthCategoryRule> {
+  return apiClient.put('/wealth/category-rules', rule)
+}
+
+export async function deleteCategoryRule(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/category-rules/${id}`)
+}
+
+/* ---------------- statement import ---------------- */
+
+export async function parseStatementPdf(file: File): Promise<{ transactions: ParsedStatementTransaction[] }> {
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.postForm('/wealth/statements/parse-pdf', form)
 }
 
 /* ---------------- entries ---------------- */

@@ -71,6 +71,22 @@ class WealthCategory(Base):
     group: Mapped["WealthCategoryGroup | None"] = relationship("WealthCategoryGroup")
 
 
+class WealthCategoryRule(Base):
+    """User-maintained keyword -> category mapping used to auto-categorize statement imports.
+
+    Matching is a case-insensitive substring check against a transaction's description/payee,
+    and always takes priority over the AI's own category guess during PDF statement parsing.
+    """
+
+    __tablename__ = "wealth_category_rules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    keyword: Mapped[str] = mapped_column(String, nullable=False)
+    category_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_categories.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class WealthEntry(Base):
     __tablename__ = "wealth_entries"
 

@@ -34,16 +34,22 @@ def _extract_text(payload: dict, response_field: str) -> str | None:
         return node
 
     # 2. "responses"-style shape: output is a list of {type, content} segments
-    # (e.g. LM Studio/OpenAI responses API) — prefer the final "message" segment
-    # over intermediate "reasoning" ones.
+    # (e.g. LM Studio/OpenAI responses API) — only the final "message" segment is the real
+    # answer. If generation was cut off mid-thought, only "reasoning" segments exist — never
+    # treat those as the answer, or callers will try to parse chain-of-thought as data.
     output = payload.get("output")
     if isinstance(output, list):
         for item in reversed(output):
             if isinstance(item, dict) and item.get("type") == "message" and isinstance(item.get("content"), str):
                 return item["content"]
         for item in reversed(output):
-            if isinstance(item, dict) and isinstance(item.get("content"), str):
+            if isinstance(item, dict) and item.get("type") not in ("reasoning", None) and isinstance(item.get("content"), str):
                 return item["content"]
+        if any(isinstance(item, dict) and item.get("type") == "reasoning" for item in output):
+            raise AIProviderError(
+                "The AI model was still reasoning when generation stopped and never produced an "
+                "answer. It may need more time (increase the timeout) or a smaller input."
+            )
 
     # 3. fall back to common shapes
     for key in ("output", "response", "content", "text"):
@@ -63,7 +69,7 @@ def _extract_text(payload: dict, response_field: str) -> str | None:
     return None
 
 
-def generate(system_prompt: str, user_input: str) -> str:
+def generate(system_prompt: str, user_input: str, timeout: float = 60) -> str:
     """Calls the configured local AI endpoint and returns generated text.
 
     Raises AIProviderError if AI is disabled, unreachable, or returns an
@@ -100,9 +106,14 @@ def generate(system_prompt: str, user_input: str) -> str:
         }
 
     try:
-        response = httpx.post(endpoint, json=body, timeout=60)
+        response = httpx.post(endpoint, json=body, timeout=timeout)
         response.raise_for_status()
         payload = response.json()
+    except httpx.TimeoutException as exc:
+        raise AIProviderError(
+            f"AI model did not respond within {timeout:.0f}s. Reasoning models can be slow on "
+            "large inputs — try again, use a smaller input, or increase the timeout."
+        ) from exc
     except httpx.HTTPError as exc:
         raise AIProviderError(f"Could not reach AI endpoint: {exc}") from exc
     except ValueError as exc:

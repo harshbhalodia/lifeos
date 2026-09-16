@@ -54,6 +54,23 @@ export interface WealthCategory {
   created_at: string
 }
 
+/** User-maintained keyword -> category mapping used to auto-categorize statement imports. */
+export interface WealthCategoryRule {
+  id: string
+  keyword: string
+  category_id: string
+  created_at: string
+}
+
+/** A single transaction extracted from a PDF statement by the AI, before it becomes an entry. */
+export interface ParsedStatementTransaction {
+  entry_date: string | null
+  payee: string | null
+  amount: number | null
+  type: EntryType
+  category_id: string | null
+}
+
 export interface WealthEntry {
   id: string
   type: EntryType
