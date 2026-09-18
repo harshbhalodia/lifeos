@@ -7,7 +7,12 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-brand">
         <Sparkles size={20} />
-        <span>LifeOS</span>
+        <div className="sidebar-brand-text">
+          <span>LifeOS</span>
+          <span className="sidebar-brand-tagline" title="Plan with purpose. Decide with clarity. Pivot with confidence.">
+            pp &middot; dc &middot; pc
+          </span>
+        </div>
       </div>
 
       <nav className="sidebar-nav">

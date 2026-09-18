@@ -3,6 +3,9 @@ import type { FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
 import { useAuth } from './AuthContext'
+import { TerminalTypewriter } from '@/core/layout/TerminalTypewriter'
+
+const TAGLINE_LINES = ['Plan with purpose. Decide with clarity. Pivot with confidence.']
 
 export function LoginPage() {
   const { user, signInWithPassword } = useAuth()
@@ -33,8 +36,8 @@ export function LoginPage() {
         <div className="auth-brand">
           <Sparkles size={20} />
           <span>LifeOS</span>
+          <span className="auth-brand-short">pp &middot; dc &middot; pc</span>
         </div>
-        <p className="auth-tagline">Your self-hosted personal life operating system.</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label>
@@ -70,6 +73,8 @@ export function LoginPage() {
           self-service sign-up.
         </p>
       </div>
+
+      <TerminalTypewriter lines={TAGLINE_LINES} className="auth-tagline-outer terminal-tagline" />
     </div>
   )
 }

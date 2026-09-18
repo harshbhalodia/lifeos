@@ -122,6 +122,21 @@ code {
   padding: 0 8px 16px;
 }
 
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.sidebar-brand-tagline {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  cursor: default;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -223,8 +238,10 @@ code {
 .auth-shell {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 20px;
   background: var(--bg);
 }
 
@@ -239,7 +256,7 @@ code {
 
 .auth-brand {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   font-family: var(--font-serif);
   font-weight: 700;
@@ -247,10 +264,70 @@ code {
   color: var(--accent-strong);
 }
 
+.auth-brand-short {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  cursor: default;
+}
+
 .auth-tagline {
   color: var(--text-muted);
   margin: 6px 0 20px;
   font-size: 13px;
+}
+
+.terminal-tagline {
+  font-family: var(--font-mono);
+  min-height: 3.6em;
+}
+
+.auth-tagline-outer {
+  min-height: 1.4em;
+  margin: 0;
+  max-width: 90vw;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.terminal-line {
+  display: inline;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--accent-strong);
+  vertical-align: text-bottom;
+  animation: terminal-blink 0.9s step-end infinite;
+}
+
+@keyframes terminal-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .auth-form {
