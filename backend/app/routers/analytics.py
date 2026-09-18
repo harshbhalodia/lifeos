@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import User, WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption
+from app.models import User, WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption, WealthGoal
 from app.schemas import AnalyticsSummary, NetWorthProjectionPoint
 from app.services.analytics import (
     compute_asset_performance,
     compute_budget_statuses,
     compute_cashflow_series,
     compute_category_group_breakdown,
+    compute_diversification,
+    compute_goal_feasibility,
+    compute_income_forecast,
     compute_liquidity,
     compute_net_worth,
     project_net_worth,
@@ -25,12 +28,16 @@ def _load(db: Session, user_id: str):
     entries = db.query(WealthEntry).filter(WealthEntry.user_id == user_id).all()
     budgets = db.query(WealthBudget).filter(WealthBudget.user_id == user_id).all()
     assets = db.query(WealthAsset).filter(WealthAsset.user_id == user_id).all()
-    return accounts, categories, groups, entries, budgets, assets
+    goals = db.query(WealthGoal).filter(WealthGoal.user_id == user_id).all()
+    return accounts, categories, groups, entries, budgets, assets, goals
 
 
 @router.get("/summary", response_model=AnalyticsSummary)
 def analytics_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    accounts, categories, groups, entries, budgets, assets = _load(db, user.id)
+    accounts, categories, groups, entries, budgets, assets, goals = _load(db, user.id)
+
+    recent_cashflow = compute_cashflow_series(entries, months_back=3)
+    avg_monthly_net = sum(c["net"] for c in recent_cashflow) / len(recent_cashflow) if recent_cashflow else 0.0
 
     return AnalyticsSummary(
         net_worth=compute_net_worth(accounts, assets),
@@ -39,6 +46,9 @@ def analytics_summary(user: User = Depends(get_current_user), db: Session = Depe
         category_breakdown=compute_category_group_breakdown(entries, categories, groups),
         budget_statuses=compute_budget_statuses(budgets, entries, categories, user.fiscal_year_start_month),
         asset_performance=compute_asset_performance(assets),
+        income_forecast=compute_income_forecast(entries),
+        diversification=compute_diversification(accounts, assets),
+        goal_feasibility=compute_goal_feasibility(goals, avg_monthly_net),
     )
 
 

@@ -10,7 +10,17 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
 
-from app.models import WealthAccount, WealthAsset, WealthBudget, WealthCategory, WealthCategoryGroup, WealthEntry, WealthForecastAssumption
+from app.models import (
+    WealthAccount,
+    WealthAsset,
+    WealthBudget,
+    WealthCategory,
+    WealthCategoryGroup,
+    WealthEntry,
+    WealthForecastAssumption,
+    WealthGoal,
+    WealthScenario,
+)
 
 
 def _round2(value: float) -> float:
@@ -295,3 +305,289 @@ def compute_asset_performance(assets: list[WealthAsset], today: date | None = No
             }
         )
     return results
+
+
+def _recurring_monthly_amount(entry: WealthEntry) -> float:
+    """Normalizes a recurring entry's amount to an equivalent monthly figure."""
+    if entry.recurrence_interval == "yearly":
+        return entry.amount / 12
+    if entry.recurrence_interval == "weekly":
+        return entry.amount * 52 / 12
+    if entry.recurrence_interval == "biweekly":
+        return entry.amount * 26 / 12
+    return entry.amount  # "monthly" or unspecified recurrence
+
+
+def compute_income_forecast(
+    entries: list[WealthEntry], months_back: int = 6, months_forward: int = 6, today: date | None = None
+) -> dict:
+    """Projects future monthly income from trailing actuals plus known recurring income.
+
+    Deterministic only: history is a straight sum of past income entries per month, the
+    forecast trend is an ordinary-least-squares slope over that history, and the projection
+    is floored at the known recurring monthly income so a quiet month never forecasts below
+    committed/recurring income. The agent layer only explains this, never recomputes it.
+    """
+    today = today or date.today()
+    history: list[dict] = []
+
+    for i in range(months_back - 1, -1, -1):
+        month_index = today.month - 1 - i
+        year = today.year + month_index // 12
+        month = month_index % 12 + 1
+        bucket_date = date(year, month, 1)
+        key = _month_key(bucket_date)
+        total = sum(e.amount for e in entries if e.type == "income" and _month_key(e.entry_date) == key)
+        history.append({"month": key, "label": _month_label(bucket_date), "income": _round2(total)})
+
+    values = [h["income"] for h in history]
+    n = len(values)
+    avg_monthly_income = _round2(sum(values) / n) if n else 0.0
+
+    slope = 0.0
+    if n >= 2:
+        mean_x = (n - 1) / 2
+        mean_y = sum(values) / n
+        denominator = sum((i - mean_x) ** 2 for i in range(n))
+        if denominator:
+            slope = sum((i - mean_x) * (values[i] - mean_y) for i in range(n)) / denominator
+
+    recurring_monthly_income = _round2(
+        sum(_recurring_monthly_amount(e) for e in entries if e.type == "income" and e.is_recurring)
+    )
+
+    forecast: list[dict] = []
+    for i in range(1, months_forward + 1):
+        month_index = today.month - 1 + i
+        year = today.year + month_index // 12
+        month = month_index % 12 + 1
+        bucket_date = date(year, month, 1)
+        projected = max(avg_monthly_income + slope * (n - 1 + i), recurring_monthly_income)
+        forecast.append({"month": _month_key(bucket_date), "label": _month_label(bucket_date), "income": _round2(projected)})
+
+    return {
+        "history": history,
+        "forecast": forecast,
+        "avg_monthly_income": avg_monthly_income,
+        "recurring_monthly_income": recurring_monthly_income,
+        "trend_monthly_change": _round2(slope),
+    }
+
+
+def compute_diversification(accounts: list[WealthAccount], assets: list[WealthAsset] | None = None) -> dict:
+    """Breaks net worth down by account/asset type to surface concentration risk.
+
+    Only positive-balance buckets count toward allocation percentages — a credit card or loan
+    is a liability, not a diversification slice.
+    """
+    buckets: dict[str, float] = defaultdict(float)
+
+    for acc in accounts:
+        balance = -abs(acc.current_balance) if acc.type in ("credit", "loan") else acc.current_balance
+        if balance > 0:
+            buckets[acc.type] += balance
+
+    for asset in assets or []:
+        if asset.status == "holding" and asset.current_value > 0:
+            buckets[f"asset:{asset.asset_type}"] += asset.current_value
+
+    total = sum(buckets.values())
+    allocations = [
+        {
+            "label": label,
+            "amount": _round2(amount),
+            "percent": _round2(amount / total * 100) if total > 0 else 0.0,
+        }
+        for label, amount in buckets.items()
+    ]
+    allocations.sort(key=lambda x: x["amount"], reverse=True)
+    largest = allocations[0] if allocations else None
+
+    return {
+        "allocations": allocations,
+        "total_allocatable": _round2(total),
+        "largest_holding_label": largest["label"] if largest else None,
+        "concentration_percent": largest["percent"] if largest else 0.0,
+    }
+
+
+def compute_goal_feasibility(
+    goals: list[WealthGoal], avg_monthly_net_savings: float, today: date | None = None
+) -> list[dict]:
+    """Compares each open goal's required monthly contribution against the actual savings rate.
+
+    `status` is a deterministic threshold check (required vs. avg_monthly_net_savings) — the
+    goal-planner agent only explains this verdict, it never invents its own feasibility call.
+    """
+    today = today or date.today()
+    results = []
+
+    for g in goals:
+        if g.achieved_at is not None:
+            continue
+
+        remaining = max(g.target_amount - g.current_amount, 0.0)
+        months_remaining: int | None = None
+        required_monthly: float | None = None
+
+        if g.target_date:
+            months_remaining = max((g.target_date.year - today.year) * 12 + (g.target_date.month - today.month), 1)
+            required_monthly = _round2(remaining / months_remaining)
+
+        if required_monthly is None:
+            status = "no_target_date"
+        elif avg_monthly_net_savings <= 0:
+            status = "off_track"
+        elif required_monthly <= avg_monthly_net_savings:
+            status = "on_track"
+        elif required_monthly <= avg_monthly_net_savings * 1.5:
+            status = "at_risk"
+        else:
+            status = "off_track"
+
+        results.append(
+            {
+                "goal_id": g.id,
+                "name": g.name,
+                "goal_type": g.goal_type,
+                "target_amount": g.target_amount,
+                "current_amount": g.current_amount,
+                "remaining_amount": _round2(remaining),
+                "target_date": g.target_date,
+                "months_remaining": months_remaining,
+                "required_monthly_contribution": required_monthly,
+                "status": status,
+            }
+        )
+    return results
+
+
+def project_scenario(
+    accounts: list[WealthAccount],
+    assets: list[WealthAsset],
+    scenario: WealthScenario,
+    avg_monthly_net_contribution: float,
+    today: date | None = None,
+) -> list[dict]:
+    """Sandbox what-if projection for a single saved draft scenario.
+
+    Reads current accounts/assets ONLY as a starting snapshot — this never writes back to them,
+    so drafting (and deleting) any number of scenarios never touches real data. Unlike the single
+    "active" WealthForecastAssumption used on the Analytics page, each scenario independently
+    overrides the investment return rate, personal-asset appreciation rate, and monthly
+    contribution (with its own growth rate), so best-case/worst-case/custom drafts don't collide.
+
+    Growth is modeled per-account and per-asset (not one blanket rate) because not every account
+    or asset actually generates returns: an account/asset only grows at `investment_return_rate` /
+    `personal_asset_growth_rate` by default if it's an investment/retirement account (accounts) or
+    always (assets) — every other account defaults to flat (0%) unless the scenario's
+    `account_configs`/`asset_configs` explicitly override its rate (and can even turn its growth
+    off entirely via `include_in_growth=False`, e.g. modeling a car depreciating at a set rate
+    while a checking account never grows). Extra `income_sources` layer additional contributions
+    (each with their own growth rate) on top of the base monthly contribution.
+    """
+    today = today or date.today()
+
+    account_config_by_id = {c.account_id: c for c in scenario.account_configs}
+    asset_config_by_id = {c.asset_id: c for c in scenario.asset_configs}
+
+    def _account_rate(acc: WealthAccount) -> float:
+        cfg = account_config_by_id.get(acc.id)
+        if cfg and not cfg.include_in_growth:
+            return 0.0
+        if cfg and cfg.growth_rate is not None:
+            return cfg.growth_rate
+        return scenario.investment_return_rate if acc.type in ("investment", "retirement") else 0.0
+
+    def _asset_rate(asset: WealthAsset) -> float:
+        cfg = asset_config_by_id.get(asset.id)
+        if cfg and not cfg.include_in_growth:
+            return 0.0
+        if cfg and cfg.growth_rate is not None:
+            return cfg.growth_rate
+        return scenario.personal_asset_growth_rate
+
+    # Starting balances, signed the same way compute_net_worth treats credit/loan as debt.
+    account_balances: dict[str, float] = {}
+    account_bucket: dict[str, str] = {}
+    for acc in accounts:
+        balance = -abs(acc.current_balance) if acc.type in ("credit", "loan") else acc.current_balance
+        account_balances[acc.id] = balance
+        if acc.type in ("investment", "retirement"):
+            account_bucket[acc.id] = "investments"
+        elif acc.is_liquid:
+            account_bucket[acc.id] = "liquid"
+        else:
+            account_bucket[acc.id] = "illiquid_other"
+
+    asset_values: dict[str, float] = {a.id: a.current_value for a in assets if a.status == "holding"}
+
+    base_monthly = (
+        scenario.monthly_contribution_override
+        if scenario.monthly_contribution_override is not None
+        else avg_monthly_net_contribution
+    )
+    income_sources = [{"monthly_amount": s.monthly_amount, "growth_rate": s.growth_rate} for s in scenario.income_sources]
+
+    # New contributions grow whichever investment/retirement accounts are still opted into growth;
+    # with none, they sit in an unallocated pool that still compounds at the scenario's default rate.
+    eligible_account_ids = [
+        acc.id
+        for acc in accounts
+        if account_bucket[acc.id] == "investments"
+        and (account_config_by_id.get(acc.id) is None or account_config_by_id[acc.id].include_in_growth)
+    ]
+    unallocated_pool = 0.0
+
+    def _bucket_totals() -> dict[str, float]:
+        totals = {"liquid": 0.0, "investments": 0.0, "illiquid_other": 0.0}
+        for acc_id, bal in account_balances.items():
+            totals[account_bucket[acc_id]] += bal
+        totals["investments"] += unallocated_pool
+        return {
+            "liquid": totals["liquid"],
+            "investments": totals["investments"],
+            "personal_assets": sum(asset_values.values()),
+            "illiquid_other": totals["illiquid_other"],
+        }
+
+    def _point(year: int) -> dict:
+        totals = _bucket_totals()
+        return {
+            "year": year,
+            "liquid": _round2(totals["liquid"]),
+            "investments": _round2(totals["investments"]),
+            "personal_assets": _round2(totals["personal_assets"]),
+            "illiquid_other": _round2(totals["illiquid_other"]),
+            "net_worth": _round2(sum(totals.values())),
+        }
+
+    points = [_point(today.year)]
+
+    for i in range(1, scenario.years_horizon + 1):
+        for acc in accounts:
+            account_balances[acc.id] *= 1 + _account_rate(acc)
+        for asset in assets:
+            if asset.id in asset_values:
+                asset_values[asset.id] *= 1 + _asset_rate(asset)
+
+        year_base_monthly = base_monthly * ((1 + scenario.income_growth_rate) ** (i - 1))
+        year_extra_monthly = sum(src["monthly_amount"] * ((1 + src["growth_rate"]) ** (i - 1)) for src in income_sources)
+        annual_contribution = max((year_base_monthly + year_extra_monthly) * 12, 0)
+
+        if eligible_account_ids:
+            weights = {acc_id: max(account_balances[acc_id], 0) for acc_id in eligible_account_ids}
+            weight_total = sum(weights.values())
+            if weight_total <= 0:
+                share = annual_contribution / len(eligible_account_ids)
+                for acc_id in eligible_account_ids:
+                    account_balances[acc_id] += share
+            else:
+                for acc_id in eligible_account_ids:
+                    account_balances[acc_id] += annual_contribution * (weights[acc_id] / weight_total)
+        else:
+            unallocated_pool = unallocated_pool * (1 + scenario.investment_return_rate) + annual_contribution
+
+        points.append(_point(today.year + i))
+
+    return points

@@ -1,4 +1,4 @@
-import { BarChart3, Bot, CreditCard, Home, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
+import { BarChart3, Binoculars, Bot, BookOpen, CreditCard, FlaskConical, Home, Landmark, PiggyBank, Receipt, Tags, Target, UploadCloud, Wallet } from 'lucide-react'
 import type { Blueprint } from '@/core/blueprints/types'
 import { WealthDataProvider } from './hooks'
 import { WealthDashboardWidget } from './components/WealthDashboardWidget'
@@ -10,6 +10,9 @@ import { EntriesPage } from './pages/EntriesPage'
 import { BudgetsPage } from './pages/BudgetsPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ScenariosPage } from './pages/ScenariosPage'
+import { WatchlistPage } from './pages/WatchlistPage'
+import { TopicsPage } from './pages/TopicsPage'
 import { ImportPage } from './pages/ImportPage'
 import { StatementImportPage } from './pages/StatementImportPage'
 import { InsightsPage } from './pages/InsightsPage'
@@ -33,7 +36,10 @@ export const wealthBlueprint: Blueprint = {
     { path: 'entries', label: 'Entries', icon: Receipt },
     { path: 'budgets', label: 'Budgets', icon: PiggyBank },
     { path: 'goals', label: 'Goals', icon: Target },
+    { path: 'watchlist', label: 'Watchlist', icon: Binoculars },
+    { path: 'topics', label: 'Research Topics', icon: BookOpen },
     { path: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { path: 'scenarios', label: 'Scenarios', icon: FlaskConical },
     { path: 'insights', label: 'Insights', icon: Bot },
     { path: 'import', label: 'Import CSV', icon: UploadCloud },
     { path: 'statement-import', label: 'Card Statement', icon: CreditCard },
@@ -46,7 +52,10 @@ export const wealthBlueprint: Blueprint = {
     { path: 'entries', element: withData(<EntriesPage />) },
     { path: 'budgets', element: withData(<BudgetsPage />) },
     { path: 'goals', element: withData(<GoalsPage />) },
+    { path: 'watchlist', element: withData(<WatchlistPage />) },
+    { path: 'topics', element: withData(<TopicsPage />) },
     { path: 'analytics', element: withData(<AnalyticsPage />) },
+    { path: 'scenarios', element: withData(<ScenariosPage />) },
     { path: 'insights', element: withData(<InsightsPage />) },
     { path: 'import', element: withData(<ImportPage />) },
     { path: 'statement-import', element: withData(<StatementImportPage />) },

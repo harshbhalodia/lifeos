@@ -20,7 +20,10 @@ from app.routers import (
     category_rules,
     entries,
     goals,
+    scenarios,
     statements,
+    topics,
+    watchlist,
 )
 from app.security import hash_password
 from app.services.defaults import seed_default_category_groups
@@ -72,6 +75,9 @@ app.include_router(entries.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
 app.include_router(assumptions.router)
+app.include_router(scenarios.router)
+app.include_router(watchlist.router)
+app.include_router(topics.router)
 app.include_router(analytics.router)
 app.include_router(agents.router)
 app.include_router(agents.insights_router)

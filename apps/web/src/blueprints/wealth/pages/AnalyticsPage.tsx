@@ -22,6 +22,7 @@ import type { NetWorthProjectionPoint } from '../types'
 import { formatCurrency } from '@/lib/format'
 
 const FALLBACK_COLOR = '#6b6255'
+const ALLOCATION_COLORS = ['#2f6d4f', '#275475', '#a15c07', '#8a4b7c', '#b3261e', '#6b6255']
 
 export function AnalyticsPage() {
   const { analytics, assumptions, loading, error, refresh } = useWealthData()
@@ -51,6 +52,17 @@ export function AnalyticsPage() {
   const cashflow = analytics.cashflow.slice(-3)
 
   const avgMonthlyNet = cashflow.length > 0 ? cashflow.reduce((s, c) => s + c.net, 0) / cashflow.length : 0
+
+  const incomeForecast = analytics.income_forecast
+  const diversification = analytics.diversification
+  const lastActual = incomeForecast.history.at(-1)
+  const incomeSeries = [
+    ...incomeForecast.history.map((h) => ({ label: h.label, actual: h.income, projected: null })),
+    ...(lastActual ? [{ label: lastActual.label, actual: null, projected: lastActual.income }] : []),
+    ...incomeForecast.forecast.map((f) => ({ label: f.label, actual: null, projected: f.income })),
+  ]
+
+
 
   return (
     <div className="stack">
@@ -148,6 +160,82 @@ export function AnalyticsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      <div className="card-grid">
+        <div className="card">
+          <h3>Income forecast</h3>
+          <p className="stat-sub" style={{ marginBottom: 8 }}>
+            {formatCurrency(incomeForecast.avg_monthly_income)}/mo average
+            {incomeForecast.recurring_monthly_income > 0
+              ? `, ${formatCurrency(incomeForecast.recurring_monthly_income)}/mo known recurring`
+              : ''}
+          </p>
+          <div style={{ height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={incomeSeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e2da" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} width={70} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  name="Actual income"
+                  stroke="#2f6d4f"
+                  strokeWidth={2}
+                  connectNulls={false}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="projected"
+                  name="Forecast income"
+                  stroke="#a15c07"
+                  strokeWidth={2}
+                  strokeDasharray="5 4"
+                  connectNulls={false}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Diversification</h3>
+          {diversification.allocations.length === 0 ? (
+            <p className="muted">No positive balances to diversify yet.</p>
+          ) : (
+            <>
+              <p className="stat-sub" style={{ marginBottom: 8 }}>
+                Largest holding: {diversification.largest_holding_label} ({diversification.concentration_percent}% of
+                allocatable net worth)
+              </p>
+              <div style={{ height: 240 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={diversification.allocations}
+                      dataKey="amount"
+                      nameKey="label"
+                      innerRadius={50}
+                      outerRadius={90}
+                      paddingAngle={2}
+                    >
+                      {diversification.allocations.map((entry, i) => (
+                        <Cell key={entry.label} fill={ALLOCATION_COLORS[i % ALLOCATION_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

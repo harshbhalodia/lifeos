@@ -4,12 +4,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 EntryType = Literal["income", "expense"]
-RecurrenceInterval = Literal["weekly", "monthly", "yearly"] | None
+RecurrenceInterval = Literal["weekly", "biweekly", "monthly", "yearly"] | None
 AccountType = Literal["checking", "savings", "credit", "investment", "retirement", "loan", "other"]
+BalanceSource = Literal["manual", "computed"]
 GoalType = Literal["emergency_fund", "savings", "debt_repayment", "investment", "major_purchase", "other"]
 BudgetPeriod = Literal["monthly", "yearly"]
 AssetType = Literal["property", "vehicle", "jewelry", "collectible", "other"]
 AssetStatus = Literal["holding", "sold"]
+WatchlistItemType = Literal["stock", "etf", "fund", "crypto", "real_estate", "product", "other"]
+WatchlistStatus = Literal["watching", "researching", "decided_in", "decided_out"]
+TopicStatus = Literal["exploring", "researching", "decided", "parked"]
 
 
 class ORMModel(BaseModel):
@@ -52,6 +56,7 @@ class AccountIn(BaseModel):
     opening_balance: float = 0
     current_balance: float = 0
     is_liquid: bool = True
+    balance_source: BalanceSource = "manual"
 
 
 class AccountOut(ORMModel):
@@ -63,6 +68,7 @@ class AccountOut(ORMModel):
     opening_balance: float
     current_balance: float
     is_liquid: bool
+    balance_source: str
     created_at: datetime
 
 
@@ -258,6 +264,146 @@ class AssumptionOut(ORMModel):
     created_at: datetime
 
 
+# ---------------- scenarios (sandbox what-if drafts, never touch real data) ----------------
+
+ScenarioType = Literal["custom", "best_case", "expected_case", "worst_case"]
+
+
+class ScenarioAccountConfigIn(BaseModel):
+    account_id: str
+    growth_rate: float | None = None
+    include_in_growth: bool = True
+
+
+class ScenarioAccountConfigOut(ORMModel):
+    account_id: str
+    growth_rate: float | None
+    include_in_growth: bool
+
+
+class ScenarioAssetConfigIn(BaseModel):
+    asset_id: str
+    growth_rate: float | None = None
+    include_in_growth: bool = True
+
+
+class ScenarioAssetConfigOut(ORMModel):
+    asset_id: str
+    growth_rate: float | None
+    include_in_growth: bool
+
+
+class ScenarioIncomeSourceIn(BaseModel):
+    name: str
+    monthly_amount: float
+    growth_rate: float = 0.0
+
+
+class ScenarioIncomeSourceOut(ORMModel):
+    id: str
+    name: str
+    monthly_amount: float
+    growth_rate: float
+
+
+class ScenarioIn(BaseModel):
+    id: str | None = None
+    name: str
+    description: str | None = None
+    scenario_type: ScenarioType = "custom"
+    years_horizon: int = Field(default=10, ge=1, le=50)
+    investment_return_rate: float = 0.07
+    personal_asset_growth_rate: float = 0.02
+    monthly_contribution_override: float | None = None
+    income_growth_rate: float = 0.0
+    is_adopted: bool = False
+    account_configs: list[ScenarioAccountConfigIn] = Field(default_factory=list)
+    asset_configs: list[ScenarioAssetConfigIn] = Field(default_factory=list)
+    income_sources: list[ScenarioIncomeSourceIn] = Field(default_factory=list)
+
+
+class ScenarioOut(ORMModel):
+    id: str
+    name: str
+    description: str | None
+    scenario_type: str
+    years_horizon: int
+    investment_return_rate: float
+    personal_asset_growth_rate: float
+    monthly_contribution_override: float | None
+    income_growth_rate: float
+    is_adopted: bool
+    created_at: datetime
+    account_configs: list[ScenarioAccountConfigOut] = []
+    asset_configs: list[ScenarioAssetConfigOut] = []
+    income_sources: list[ScenarioIncomeSourceOut] = []
+
+
+class ScenarioProjectionPoint(BaseModel):
+    year: int
+    liquid: float
+    investments: float
+    personal_assets: float
+    illiquid_other: float
+    net_worth: float
+
+
+# ---------------- watchlist ----------------
+
+
+class WatchlistItemIn(BaseModel):
+    id: str | None = None
+    name: str
+    item_type: WatchlistItemType
+    symbol: str | None = None
+    status: WatchlistStatus = "watching"
+    target_price: float | None = None
+    current_price: float | None = None
+    currency: str = "USD"
+    thesis: str | None = None
+    url: str | None = None
+    priority: int = 0
+
+
+class WatchlistItemOut(ORMModel):
+    id: str
+    name: str
+    item_type: str
+    symbol: str | None
+    status: str
+    target_price: float | None
+    current_price: float | None
+    currency: str
+    thesis: str | None
+    url: str | None
+    priority: int
+    created_at: datetime
+
+
+# ---------------- topics ----------------
+
+
+class TopicIn(BaseModel):
+    id: str | None = None
+    title: str
+    description: str
+    category: str | None = None
+    status: TopicStatus = "exploring"
+    related_goal_id: str | None = None
+    priority: int = 0
+
+
+class TopicOut(ORMModel):
+    id: str
+    title: str
+    description: str
+    category: str | None
+    status: str
+    related_goal_id: str | None
+    priority: int
+    created_at: datetime
+
+
 # ---------------- analytics ----------------
 
 
@@ -323,6 +469,46 @@ class NetWorthProjectionPoint(BaseModel):
     net_worth: float
 
 
+class IncomeForecastPoint(BaseModel):
+    month: str
+    label: str
+    income: float
+
+
+class IncomeForecastSummary(BaseModel):
+    history: list[IncomeForecastPoint]
+    forecast: list[IncomeForecastPoint]
+    avg_monthly_income: float
+    recurring_monthly_income: float
+    trend_monthly_change: float
+
+
+class AllocationSlice(BaseModel):
+    label: str
+    amount: float
+    percent: float
+
+
+class DiversificationSummary(BaseModel):
+    allocations: list[AllocationSlice]
+    total_allocatable: float
+    largest_holding_label: str | None
+    concentration_percent: float
+
+
+class GoalFeasibility(BaseModel):
+    goal_id: str
+    name: str
+    goal_type: str
+    target_amount: float
+    current_amount: float
+    remaining_amount: float
+    target_date: date | None
+    months_remaining: int | None
+    required_monthly_contribution: float | None
+    status: Literal["on_track", "at_risk", "off_track", "no_target_date"]
+
+
 class AnalyticsSummary(BaseModel):
     net_worth: NetWorthSummary
     liquidity: LiquidityInfo
@@ -330,6 +516,9 @@ class AnalyticsSummary(BaseModel):
     category_breakdown: list[CategoryGroupTotal]
     budget_statuses: list[BudgetStatus]
     asset_performance: list[AssetPerformance]
+    income_forecast: IncomeForecastSummary
+    diversification: DiversificationSummary
+    goal_feasibility: list[GoalFeasibility]
 
 
 # ---------------- agents ----------------

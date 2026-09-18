@@ -6,6 +6,7 @@ import type {
   Insight,
   NetWorthProjectionPoint,
   ParsedStatementTransaction,
+  ScenarioProjectionPoint,
   WealthAccount,
   WealthAsset,
   WealthBudget,
@@ -15,6 +16,9 @@ import type {
   WealthEntry,
   WealthForecastAssumption,
   WealthGoal,
+  WealthScenario,
+  WealthTopic,
+  WealthWatchlistItem,
 } from './types'
 
 /* ---------------- accounts ---------------- */
@@ -189,6 +193,58 @@ export async function upsertForecastAssumption(
   assumption: Partial<WealthForecastAssumption> & { name: string; annual_return_rate: number },
 ): Promise<WealthForecastAssumption> {
   return apiClient.put('/wealth/assumptions', assumption)
+}
+
+/* ---------------- scenarios (sandbox what-if drafts) ---------------- */
+
+export async function listScenarios(): Promise<WealthScenario[]> {
+  return apiClient.get('/wealth/scenarios')
+}
+
+export async function upsertScenario(
+  scenario: Partial<WealthScenario> & { name: string },
+): Promise<WealthScenario> {
+  return apiClient.put('/wealth/scenarios', scenario)
+}
+
+export async function deleteScenario(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/scenarios/${id}`)
+}
+
+export async function getScenarioProjection(id: string): Promise<ScenarioProjectionPoint[]> {
+  return apiClient.get(`/wealth/scenarios/${id}/projection`)
+}
+
+/* ---------------- watchlist ---------------- */
+
+export async function listWatchlist(): Promise<WealthWatchlistItem[]> {
+  return apiClient.get('/wealth/watchlist')
+}
+
+export async function upsertWatchlistItem(
+  item: Partial<WealthWatchlistItem> & { name: string; item_type: WealthWatchlistItem['item_type'] },
+): Promise<WealthWatchlistItem> {
+  return apiClient.put('/wealth/watchlist', item)
+}
+
+export async function deleteWatchlistItem(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/watchlist/${id}`)
+}
+
+/* ---------------- topics ---------------- */
+
+export async function listTopics(): Promise<WealthTopic[]> {
+  return apiClient.get('/wealth/topics')
+}
+
+export async function upsertTopic(
+  topic: Partial<WealthTopic> & { title: string; description: string },
+): Promise<WealthTopic> {
+  return apiClient.put('/wealth/topics', topic)
+}
+
+export async function deleteTopic(id: string): Promise<void> {
+  return apiClient.delete(`/wealth/topics/${id}`)
 }
 
 /* ---------------- analytics (computed server-side) ---------------- */

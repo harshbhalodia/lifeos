@@ -1,7 +1,7 @@
 /** Wealth blueprint domain types — mirror the FastAPI backend's Pydantic schemas. */
 
 export type EntryType = 'income' | 'expense'
-export type RecurrenceInterval = 'weekly' | 'monthly' | 'yearly' | null
+export type RecurrenceInterval = 'weekly' | 'biweekly' | 'monthly' | 'yearly' | null
 export type AccountType =
   | 'checking'
   | 'savings'
@@ -20,6 +20,10 @@ export type GoalType =
 export type BudgetPeriod = 'monthly' | 'yearly'
 export type AssetType = 'property' | 'vehicle' | 'jewelry' | 'collectible' | 'other'
 export type AssetStatus = 'holding' | 'sold'
+export type BalanceSource = 'manual' | 'computed'
+export type WatchlistItemType = 'stock' | 'etf' | 'fund' | 'crypto' | 'real_estate' | 'product' | 'other'
+export type WatchlistStatus = 'watching' | 'researching' | 'decided_in' | 'decided_out'
+export type TopicStatus = 'exploring' | 'researching' | 'decided' | 'parked'
 
 export interface WealthAccount {
   id: string
@@ -30,6 +34,7 @@ export interface WealthAccount {
   opening_balance: number
   current_balance: number
   is_liquid: boolean
+  balance_source: BalanceSource
   created_at: string
 }
 
@@ -119,6 +124,56 @@ export interface WealthForecastAssumption {
   created_at: string
 }
 
+export type ScenarioType = 'custom' | 'best_case' | 'expected_case' | 'worst_case'
+
+/** Per-account growth override within one scenario draft; growth_rate null = use the scenario default. */
+export interface ScenarioAccountConfig {
+  account_id: string
+  growth_rate: number | null
+  include_in_growth: boolean
+}
+
+/** Per-asset growth override within one scenario draft (e.g. a car depreciating). */
+export interface ScenarioAssetConfig {
+  asset_id: string
+  growth_rate: number | null
+  include_in_growth: boolean
+}
+
+/** An extra modeled income stream (raise, side hustle, rental income) with its own growth rate. */
+export interface ScenarioIncomeSource {
+  name: string
+  monthly_amount: number
+  growth_rate: number
+}
+
+/** A saved sandbox "what-if" draft — computed on demand from real net worth, never writes back to it. */
+export interface WealthScenario {
+  id: string
+  name: string
+  description: string | null
+  scenario_type: ScenarioType
+  years_horizon: number
+  investment_return_rate: number
+  personal_asset_growth_rate: number
+  monthly_contribution_override: number | null
+  income_growth_rate: number
+  is_adopted: boolean
+  account_configs: ScenarioAccountConfig[]
+  asset_configs: ScenarioAssetConfig[]
+  income_sources: ScenarioIncomeSource[]
+  created_at: string
+}
+
+export interface ScenarioProjectionPoint {
+  year: number
+  liquid: number
+  investments: number
+  personal_assets: number
+  illiquid_other: number
+  net_worth: number
+}
+
 /** Physical/personal asset held outside financial accounts, e.g. a home or car. */
 export interface WealthAsset {
   id: string
@@ -132,6 +187,34 @@ export interface WealthAsset {
   sold_value: number | null
   sold_date: string | null
   notes: string | null
+  created_at: string
+}
+
+/** An investment idea being tracked/considered — never counted in net worth until actually bought. */
+export interface WealthWatchlistItem {
+  id: string
+  name: string
+  item_type: WatchlistItemType
+  symbol: string | null
+  status: WatchlistStatus
+  target_price: number | null
+  current_price: number | null
+  currency: string
+  thesis: string | null
+  url: string | null
+  priority: number
+  created_at: string
+}
+
+/** A research topic/knowledge note the user cares about, feeding the research advisor agent. */
+export interface WealthTopic {
+  id: string
+  title: string
+  description: string
+  category: string | null
+  status: TopicStatus
+  related_goal_id: string | null
+  priority: number
   created_at: string
 }
 
@@ -160,6 +243,45 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   jewelry: 'Jewelry',
   collectible: 'Collectible',
   other: 'Other',
+}
+
+export const SCENARIO_TYPE_LABELS: Record<ScenarioType, string> = {
+  custom: 'Custom',
+  best_case: 'Best case',
+  expected_case: 'Expected case',
+  worst_case: 'Worst case',
+}
+
+/** Quick-fill rates when picking a scenario type — the user can still tweak every field after. */
+export const SCENARIO_TYPE_PRESETS: Record<ScenarioType, { investment_return_rate: number; personal_asset_growth_rate: number; income_growth_rate: number }> = {
+  custom: { investment_return_rate: 0.07, personal_asset_growth_rate: 0.02, income_growth_rate: 0 },
+  best_case: { investment_return_rate: 0.11, personal_asset_growth_rate: 0.04, income_growth_rate: 0.03 },
+  expected_case: { investment_return_rate: 0.07, personal_asset_growth_rate: 0.02, income_growth_rate: 0.02 },
+  worst_case: { investment_return_rate: 0.02, personal_asset_growth_rate: 0, income_growth_rate: 0 },
+}
+
+export const WATCHLIST_TYPE_LABELS: Record<WatchlistItemType, string> = {
+  stock: 'Stock',
+  etf: 'ETF',
+  fund: 'Fund',
+  crypto: 'Crypto',
+  real_estate: 'Real Estate',
+  product: 'Product',
+  other: 'Other',
+}
+
+export const WATCHLIST_STATUS_LABELS: Record<WatchlistStatus, string> = {
+  watching: 'Watching',
+  researching: 'Researching',
+  decided_in: 'Decided In',
+  decided_out: 'Passed',
+}
+
+export const TOPIC_STATUS_LABELS: Record<TopicStatus, string> = {
+  exploring: 'Exploring',
+  researching: 'Researching',
+  decided: 'Decided',
+  parked: 'Parked',
 }
 
 export const MONTH_LABELS = [
@@ -231,6 +353,46 @@ export interface NetWorthProjectionPoint {
   net_worth: number
 }
 
+export interface IncomeForecastPoint {
+  month: string
+  label: string
+  income: number
+}
+
+export interface IncomeForecastSummary {
+  history: IncomeForecastPoint[]
+  forecast: IncomeForecastPoint[]
+  avg_monthly_income: number
+  recurring_monthly_income: number
+  trend_monthly_change: number
+}
+
+export interface AllocationSlice {
+  label: string
+  amount: number
+  percent: number
+}
+
+export interface DiversificationSummary {
+  allocations: AllocationSlice[]
+  total_allocatable: number
+  largest_holding_label: string | null
+  concentration_percent: number
+}
+
+export interface GoalFeasibility {
+  goal_id: string
+  name: string
+  goal_type: GoalType
+  target_amount: number
+  current_amount: number
+  remaining_amount: number
+  target_date: string | null
+  months_remaining: number | null
+  required_monthly_contribution: number | null
+  status: 'on_track' | 'at_risk' | 'off_track' | 'no_target_date'
+}
+
 export interface AnalyticsSummary {
   net_worth: NetWorthSummary
   liquidity: LiquidityInfo
@@ -238,6 +400,9 @@ export interface AnalyticsSummary {
   category_breakdown: CategoryGroupTotal[]
   budget_statuses: BudgetStatus[]
   asset_performance: AssetPerformance[]
+  income_forecast: IncomeForecastSummary
+  diversification: DiversificationSummary
+  goal_feasibility: GoalFeasibility[]
 }
 
 /* ---------------- agents & insights ---------------- */

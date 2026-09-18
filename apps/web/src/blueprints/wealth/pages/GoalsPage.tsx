@@ -5,13 +5,27 @@ import { useWealthData } from '../hooks'
 import * as api from '../api'
 import { Modal } from '../components/Modal'
 import { GOAL_TYPE_LABELS } from '../types'
-import type { GoalType, WealthGoal } from '../types'
+import type { GoalFeasibility, GoalType, WealthGoal } from '../types'
 import { formatCurrency, formatDate } from '@/lib/format'
 
 const GOAL_TYPES = Object.keys(GOAL_TYPE_LABELS) as GoalType[]
 
+const FEASIBILITY_LABELS: Record<GoalFeasibility['status'], string> = {
+  on_track: 'On track',
+  at_risk: 'At risk',
+  off_track: 'Off track',
+  no_target_date: 'No target date',
+}
+
+const FEASIBILITY_BADGE_CLASS: Record<GoalFeasibility['status'], string> = {
+  on_track: 'badge-success',
+  at_risk: 'badge-warning',
+  off_track: 'badge-danger',
+  no_target_date: '',
+}
+
 export function GoalsPage() {
-  const { goals, entries, loading, error, refresh } = useWealthData()
+  const { goals, entries, loading, error, refresh, analytics } = useWealthData()
   const [editing, setEditing] = useState<WealthGoal | null>(null)
   const [showForm, setShowForm] = useState(false)
 
@@ -56,6 +70,7 @@ export function GoalsPage() {
           const percent = g.target_amount > 0 ? Math.min((g.current_amount / g.target_amount) * 100, 100) : 0
           const linkedCount = entries.filter((e) => e.goal_id === g.id).length
           const achieved = g.achieved_at !== null
+          const feasibility = analytics?.goal_feasibility.find((f) => f.goal_id === g.id)
           return (
             <div key={g.id} className="card" onClick={() => setEditing(g)} style={{ cursor: 'pointer' }}>
               <div className="card-header">
@@ -73,6 +88,18 @@ export function GoalsPage() {
               <p className="stat-sub">
                 {linkedCount > 0 ? `${linkedCount} linked entr${linkedCount === 1 ? 'y' : 'ies'}` : 'No linked entries — amount set manually'}
               </p>
+              {!achieved && feasibility && (
+                <div style={{ marginTop: 8 }}>
+                  <span className={`badge ${FEASIBILITY_BADGE_CLASS[feasibility.status]}`}>
+                    {FEASIBILITY_LABELS[feasibility.status]}
+                  </span>
+                  {feasibility.required_monthly_contribution !== null && (
+                    <p className="stat-sub" style={{ marginTop: 4 }}>
+                      Needs {formatCurrency(feasibility.required_monthly_contribution)}/mo to hit target date
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="row" style={{ marginTop: 8 }}>
                 {achieved ? (
                   <button

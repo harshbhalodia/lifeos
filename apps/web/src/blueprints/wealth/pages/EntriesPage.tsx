@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Trash2 } from 'lucide-react'
 import { useWealthData } from '../hooks'
 import * as api from '../api'
@@ -13,13 +14,22 @@ export function EntriesPage() {
   const [editing, setEditing] = useState<WealthEntry | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [filterType, setFilterType] = useState<'all' | EntryType>('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const accountFilter = searchParams.get('account') ?? ''
 
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
   const groupById = useMemo(() => new Map(categoryGroups.map((g) => [g.id, g])), [categoryGroups])
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
   const goalById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals])
 
-  const filtered = entries.filter((e) => filterType === 'all' || e.type === filterType)
+  const filtered = entries.filter(
+    (e) => (filterType === 'all' || e.type === filterType) && (!accountFilter || e.account_id === accountFilter),
+  )
+
+  function setAccountFilter(id: string) {
+    if (id) setSearchParams({ account: id })
+    else setSearchParams({})
+  }
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this entry?')) return
@@ -52,6 +62,14 @@ export function EntriesPage() {
             {t === 'all' ? 'All' : t === 'income' ? 'Income' : 'Expense'}
           </button>
         ))}
+        <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)} style={{ marginLeft: 'auto' }}>
+          <option value="">All accounts</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="table-wrap">
@@ -248,6 +266,7 @@ function EntryForm({
             Interval
             <select value={recurrence ?? 'monthly'} onChange={(e) => setRecurrence(e.target.value as RecurrenceInterval)}>
               <option value="weekly">Weekly</option>
+              <option value="biweekly">Biweekly</option>
               <option value="monthly">Monthly</option>
               <option value="yearly">Yearly</option>
             </select>

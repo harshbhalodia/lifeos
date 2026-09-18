@@ -34,6 +34,12 @@ class WealthAccount(Base):
     opening_balance: Mapped[float] = mapped_column(Float, default=0)
     current_balance: Mapped[float] = mapped_column(Float, default=0)
     is_liquid: Mapped[bool] = mapped_column(Boolean, default=True)
+    # "manual": current_balance is user-typed and never touched by entry sync (default, safe for
+    # existing accounts that already have entries linked without every real transaction recorded).
+    # "computed": current_balance = opening_balance + linked income - linked expense, recalculated
+    # on every entry create/update/delete. Only opt in once you're sure ALL cash movements for this
+    # account are recorded as entries, or the derived balance will drift from the real balance.
+    balance_source: Mapped[str] = mapped_column(String, default="manual", server_default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -157,6 +163,126 @@ class WealthGoal(Base):
     current_amount: Mapped[float] = mapped_column(Float, default=0)
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     achieved_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WealthScenario(Base):
+    """A saved sandbox "what-if" draft — never affects real accounts/assets/entries.
+
+    Projections are computed on demand from the user's current net worth as a starting point,
+    but every rate/contribution here is independent of the single "active" WealthForecastAssumption
+    used for the main Analytics projection, so a user can draft as many drafts as they like.
+    """
+
+    __tablename__ = "wealth_scenarios"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # "custom" | "best_case" | "expected_case" | "worst_case" — a label only, the rates below drive the math.
+    scenario_type: Mapped[str] = mapped_column(String, default="custom")
+    years_horizon: Mapped[int] = mapped_column(Integer, default=10)
+    investment_return_rate: Mapped[float] = mapped_column(Float, default=0.07)
+    personal_asset_growth_rate: Mapped[float] = mapped_column(Float, default=0.02)
+    # If None, falls back to the user's actual trailing avg monthly net cashflow at run time.
+    monthly_contribution_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    income_growth_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    # Bookmark for "this is the plan I'm going with" — bookkeeping only, never mutates real data.
+    is_adopted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    account_configs: Mapped[list["WealthScenarioAccountConfig"]] = relationship(
+        "WealthScenarioAccountConfig", cascade="all, delete-orphan", passive_deletes=True
+    )
+    asset_configs: Mapped[list["WealthScenarioAssetConfig"]] = relationship(
+        "WealthScenarioAssetConfig", cascade="all, delete-orphan", passive_deletes=True
+    )
+    income_sources: Mapped[list["WealthScenarioIncomeSource"]] = relationship(
+        "WealthScenarioIncomeSource", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class WealthScenarioAccountConfig(Base):
+    """Per-account growth override within one scenario draft — lets a scenario model that not
+    every account grows (e.g. a checking account stays flat while an investment account
+    compounds). Replaced wholesale on every scenario save, like a draft's own config blob."""
+
+    __tablename__ = "wealth_scenario_account_configs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_scenarios.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_accounts.id", ondelete="CASCADE"))
+    # None = fall back to the scenario's default rate for this account's type (0% unless investment/retirement).
+    growth_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    include_in_growth: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class WealthScenarioAssetConfig(Base):
+    """Per-asset growth override within one scenario draft (e.g. a car depreciates while a home
+    appreciates) — overrides the scenario's blanket personal_asset_growth_rate for one asset."""
+
+    __tablename__ = "wealth_scenario_asset_configs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_scenarios.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_assets.id", ondelete="CASCADE"))
+    growth_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    include_in_growth: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class WealthScenarioIncomeSource(Base):
+    """An extra income stream modeled only within one scenario draft (raise, side hustle, rental
+    income, etc.) — on top of the scenario's base monthly contribution, with its own growth rate."""
+
+    __tablename__ = "wealth_scenario_income_sources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(String, ForeignKey("wealth_scenarios.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    monthly_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    growth_rate: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class WealthWatchlistItem(Base):
+    """An investment idea being tracked/considered — stock, fund, crypto, property, product, etc.
+    Purely informational: never counted in net worth until the user actually buys it (at which
+    point it becomes a real WealthAccount/WealthAsset/WealthEntry)."""
+
+    __tablename__ = "wealth_watchlist_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    item_type: Mapped[str] = mapped_column(String, nullable=False)  # stock|etf|fund|crypto|real_estate|product|other
+    symbol: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="watching")  # watching|researching|decided_in|decided_out
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String, default="USD")
+    thesis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WealthTopic(Base):
+    """A research topic/knowledge note the user cares about (e.g. "index fund investing",
+    "real estate in X market") — curated context fed to the research advisor agent, distinct from
+    watchlist items which are specific tradeable instruments rather than open-ended topics."""
+
+    __tablename__ = "wealth_topics"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="exploring")  # exploring|researching|decided|parked
+    related_goal_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("wealth_goals.id", ondelete="SET NULL"), nullable=True
+    )
+    priority: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

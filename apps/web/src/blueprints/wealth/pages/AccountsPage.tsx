@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRightLeft, Plus, Trash2 } from 'lucide-react'
 import { useWealthData } from '../hooks'
 import * as api from '../api'
 import { Modal } from '../components/Modal'
 import { ACCOUNT_TYPE_LABELS } from '../types'
-import type { AccountType, WealthAccount } from '../types'
+import type { AccountType, BalanceSource, WealthAccount } from '../types'
 import { formatCurrency } from '@/lib/format'
 
 const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_LABELS) as AccountType[]
 
 export function AccountsPage() {
-  const { accounts, loading, error, refresh } = useWealthData()
+  const { accounts, entries, loading, error, refresh } = useWealthData()
   const [editing, setEditing] = useState<WealthAccount | null>(null)
   const [showForm, setShowForm] = useState(false)
 
@@ -41,6 +42,10 @@ export function AccountsPage() {
         figure. Whether an account is marked <strong>Liquid</strong> decides if its balance counts toward
         "Liquid" net worth and the liquidity runway estimate — mark savings/checking as liquid, and
         investment/retirement/property accounts as not liquid if you can't quickly access them.
+        <br />
+        By default, balances are entered manually. Opting an account into "Calculated from entries"
+        derives its balance from linked income/expense entries — only do this once every real cash
+        movement for that account is recorded as an entry, or the derived balance will drift from reality.
       </div>
 
       <div className="table-wrap">
@@ -69,26 +74,46 @@ export function AccountsPage() {
                 </td>
               </tr>
             ) : (
-              accounts.map((a) => (
-                <tr key={a.id} onClick={() => setEditing(a)} style={{ cursor: 'pointer' }}>
-                  <td>{a.name}</td>
-                  <td>{ACCOUNT_TYPE_LABELS[a.type]}</td>
-                  <td className="muted">{a.institution || '—'}</td>
-                  <td className="muted">{a.is_liquid ? 'Yes' : 'No'}</td>
-                  <td>{formatCurrency(a.current_balance, a.currency)}</td>
-                  <td>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void handleDelete(a.id)
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))
+              accounts.map((a) => {
+                const linkedCount = entries.filter((e) => e.account_id === a.id).length
+                return (
+                  <tr key={a.id} onClick={() => setEditing(a)} style={{ cursor: 'pointer' }}>
+                    <td>{a.name}</td>
+                    <td>{ACCOUNT_TYPE_LABELS[a.type]}</td>
+                    <td className="muted">{a.institution || '—'}</td>
+                    <td className="muted">{a.is_liquid ? 'Yes' : 'No'}</td>
+                    <td>
+                      {formatCurrency(a.current_balance, a.currency)}
+                      {a.balance_source === 'computed' && (
+                        <span className="badge" style={{ marginLeft: 6 }}>
+                          auto
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="row" style={{ justifyContent: 'flex-end' }}>
+                        <Link
+                          className="btn btn-ghost btn-sm"
+                          to={`/life/wealth/entries?account=${a.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title={linkedCount > 0 ? `${linkedCount} transaction${linkedCount === 1 ? '' : 's'}` : 'No transactions yet'}
+                        >
+                          <ArrowRightLeft size={14} />
+                        </Link>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleDelete(a.id)
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
@@ -117,6 +142,8 @@ function AccountForm({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const { entries } = useWealthData()
+  const linkedCount = account ? entries.filter((e) => e.account_id === account.id).length : 0
   const [name, setName] = useState(account?.name ?? '')
   const [type, setType] = useState<AccountType>(account?.type ?? 'checking')
   const [institution, setInstitution] = useState(account?.institution ?? '')
@@ -124,7 +151,10 @@ function AccountForm({
   const [openingBalance, setOpeningBalance] = useState(String(account?.opening_balance ?? 0))
   const [currentBalance, setCurrentBalance] = useState(String(account?.current_balance ?? 0))
   const [isLiquid, setIsLiquid] = useState(account?.is_liquid ?? true)
+  const [balanceSource, setBalanceSource] = useState<BalanceSource>(account?.balance_source ?? 'manual')
   const [saving, setSaving] = useState(false)
+
+  const isComputed = balanceSource === 'computed'
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -139,6 +169,7 @@ function AccountForm({
         opening_balance: Number(openingBalance),
         current_balance: Number(currentBalance),
         is_liquid: isLiquid,
+        balance_source: balanceSource,
       })
       await onSaved()
       onClose()
@@ -184,9 +215,30 @@ function AccountForm({
           <input type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} />
         </label>
         <label>
-          Current balance
-          <input type="number" step="0.01" value={currentBalance} onChange={(e) => setCurrentBalance(e.target.value)} />
+          Balance tracking
+          <select value={balanceSource} onChange={(e) => setBalanceSource(e.target.value as BalanceSource)}>
+            <option value="manual">Manual</option>
+            <option value="computed">Calculated from entries</option>
+          </select>
         </label>
+        <label>
+          Current balance
+          <input
+            type="number"
+            step="0.01"
+            value={currentBalance}
+            onChange={(e) => setCurrentBalance(e.target.value)}
+            disabled={isComputed}
+            title={isComputed ? 'Derived from linked entries — switch to Manual to edit directly' : undefined}
+          />
+        </label>
+        {isComputed && (
+          <p className="muted span-2" style={{ marginTop: -4 }}>
+            This balance is calculated from {linkedCount} linked entr{linkedCount === 1 ? 'y' : 'ies'} (opening balance +
+            income − expenses). Make sure every real transaction for this account is recorded, or the balance will
+            drift from reality.
+          </p>
+        )}
         <div className="span-2 row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" className="btn" onClick={onClose}>
             Cancel

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import User, WealthEntry, WealthGoal
 from app.schemas import EntryIn, EntryOut
+from app.services.ledger import sync_account_balance
 
 router = APIRouter(prefix="/wealth/entries", tags=["wealth:entries"])
 
@@ -59,6 +60,7 @@ def upsert_entry(payload: EntryIn, user: User = Depends(get_current_user), db: S
         raise HTTPException(status_code=404, detail="Entry not found")
 
     previous_goal_id = entry.goal_id if entry else None
+    previous_account_id = entry.account_id if entry else None
 
     if not entry:
         entry = WealthEntry(user_id=user.id)
@@ -74,6 +76,10 @@ def upsert_entry(payload: EntryIn, user: User = Depends(get_current_user), db: S
         _sync_goal_progress(db, previous_goal_id)
     if entry.goal_id:
         _sync_goal_progress(db, entry.goal_id)
+
+    if previous_account_id and previous_account_id != entry.account_id:
+        sync_account_balance(db, previous_account_id)
+    sync_account_balance(db, entry.account_id)
 
     return entry
 
@@ -95,6 +101,9 @@ def bulk_insert_entries(payload: list[EntryIn], user: User = Depends(get_current
     for goal_id in {e.goal_id for e in created if e.goal_id}:
         _sync_goal_progress(db, goal_id)
 
+    for account_id in {e.account_id for e in created if e.account_id}:
+        sync_account_balance(db, account_id)
+
     return created
 
 
@@ -104,7 +113,10 @@ def delete_entry(entry_id: str, user: User = Depends(get_current_user), db: Sess
     if not entry or entry.user_id != user.id:
         raise HTTPException(status_code=404, detail="Entry not found")
     goal_id = entry.goal_id
+    account_id = entry.account_id
     db.delete(entry)
     db.commit()
     if goal_id:
         _sync_goal_progress(db, goal_id)
+    if account_id:
+        sync_account_balance(db, account_id)

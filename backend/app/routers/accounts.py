@@ -5,6 +5,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import User, WealthAccount
 from app.schemas import AccountIn, AccountOut
+from app.services.ledger import sync_account_balance
 
 router = APIRouter(prefix="/wealth/accounts", tags=["wealth:accounts"])
 
@@ -24,10 +25,23 @@ def upsert_account(payload: AccountIn, user: User = Depends(get_current_user), d
         account = WealthAccount(user_id=user.id)
         db.add(account)
 
-    for field in ("name", "type", "institution", "currency", "opening_balance", "current_balance", "is_liquid"):
+    for field in (
+        "name",
+        "type",
+        "institution",
+        "currency",
+        "opening_balance",
+        "current_balance",
+        "is_liquid",
+        "balance_source",
+    ):
         setattr(account, field, getattr(payload, field))
 
     db.commit()
+    db.refresh(account)
+
+    # Only accounts opted into balance_source="computed" get their balance overwritten here.
+    sync_account_balance(db, account.id)
     db.refresh(account)
     return account
 
